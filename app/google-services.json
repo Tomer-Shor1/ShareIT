@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "441220624714",
+    "project_id": "do-a-favor---oz",
+    "storage_bucket": "do-a-favor---oz.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:441220624714:android:4f5141197a3714593291b3",
+        "android_client_info": {
+          "package_name": "net.xzx.application"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAvIDbKAaM57QVUK6Pmw5koJ-LUYOOzjjE"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

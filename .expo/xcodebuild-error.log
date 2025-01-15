@@ -1,0 +1,11 @@
+2025-01-14 17:58:06.340 xcodebuild[37625:55321527]  DVTDeviceOperation: Encountered a build number "" that is incompatible with DVTBuildVersion.
+2025-01-14 17:58:06.429 xcodebuild[37625:55321524] [MT] DVTDeviceOperation: Encountered a build number "" that is incompatible with DVTBuildVersion.
+--- xcodebuild: WARNING: Using the first of multiple matching destinations:
+{ platform:iOS Simulator, id:2695F120-19BA-4DDD-B22B-9F743345785C, OS:18.2, name:iPhone 16 Pro }
+{ platform:iOS Simulator, id:2695F120-19BA-4DDD-B22B-9F743345785C, OS:18.2, name:iPhone 16 Pro }
+** BUILD FAILED **
+
+
+The following build commands failed:
+	Building project myapp with scheme myapp and configuration Debug
+(1 failure)
