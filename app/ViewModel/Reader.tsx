@@ -46,7 +46,7 @@ export class Reader {
   async HandleLogins(email: string, password: string): Promise<{ success: boolean; message: string }> {
     try {
         const users = await DatabaseManager.queryCollection('users', 'email', '==', email);
-  
+        
         if (users.length > 0) {
           const userData = users[0];
   
@@ -128,4 +128,38 @@ async LoginWithFacebook(): Promise<{ success: boolean; message: string }> {
         return { success: false, message: `Facebook Sign-In failed: ${errorMessage}` };
     }
 }
+async ReadOpenRequests(): Promise<any[]> {
+  try {
+    const requests: any[] = [];
+    const querySnapshot = await DatabaseManager.queryCollection('Open-Requests', null, null, null);
+    console.log("Query executed successfully");
+
+    // מעבר על כל המסמכים במערך
+    for (const doc of querySnapshot) {
+      // בדיקה שהמסמך מכיל מידע
+      if (doc && doc.id) {
+        const data = doc; // קריאה לנתונים מהמסמך
+        requests.push({
+          id: data.id,
+          title: data.title || "",
+          currentCoordinates: data.currentCoordinates || "",
+          currentAddress: data.currentAddress || "",
+          destinationCoordinates: data.destinationCoordinates || "",
+          additionalNotes: data.additionalNotes || "",
+        });
+      }
+    }
+
+    console.log("Successfully retrieved Open-Requests:", requests);
+    return requests;
+  } catch (error) {
+    console.error("Error retrieving Open-Requests:", error);
+    throw new Error("Failed to retrieve Open-Requests");
+  }
 }
+
+}
+
+
+
+

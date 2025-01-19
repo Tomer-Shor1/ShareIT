@@ -6,6 +6,7 @@ import { initializeApp } from '@react-native-firebase/app';
 import { User } from '@react-native-google-signin/google-signin'
 
 ;
+import { getAuth, signInAnonymously } from '@react-native-firebase/auth';
 
 
 
@@ -34,48 +35,33 @@ export class DatabaseManager {
    * @returns A promise resolving with the document reference
    */
 
+
   public static async addDocument(
     collectionName: string,
     data: Record<string, any>,
   ): Promise<string> {
     try {
-    
-      
       console.log(`Attempting to add document to collection: ${collectionName}`);
       console.log('Data to be added:', data);
 
-
-      // Validate collection name
-      if (!collectionName || typeof collectionName !== 'string' || !collectionName.trim()) {
-        throw new Error('Collection name must be a non-empty string.');
+      // 1. בדיקת מצב התחברות
+      const auth = getAuth();
+      if (!auth.currentUser) {
+        // אם אין משתמש מחובר, אפשר:
+        // א. או לזרוק שגיאה (לדרוש מהמשתמש להתחבר ידנית)
+        // ב. או לבצע כניסה אנונימית כדי שלא יהיה Null
+        console.log('No user is currently logged in. Signing in anonymously...');
+        await signInAnonymously(auth);
       }
-
-      // Validate document data
-      if (!data || typeof data !== 'object' || Object.keys(data).length === 0) {
-        throw new Error('Document data must be a non-empty object.');
-      }
-
-      // Add Firestore timestamp fields
-      const documentData = {
-        ...data,
-        createdAt: serverTimestamp(),
-        updatedAt: serverTimestamp(),
-      };
-      console.log('Prepared document data with timestamps:', documentData);
-
-      // Add the document to Firestore
+      console.log('User is logged in:', auth.currentUser);
+      // 2. כתיבה ל-Firestore
       const colRef = collection(db, collectionName);
-      const docRef = await addDoc(colRef, documentData);
-
+      const docRef = await addDoc(colRef, data);
       console.log(`Document successfully added to ${collectionName} with ID: ${docRef.id}`);
+
       return docRef.id;
     } catch (error: any) {
-      console.error('Error adding document:', {
-        collectionName,
-        data,
-        errorMessage: error.message,
-        errorStack: error.stack,
-      });
+      console.error('Error adding document:', error);
       throw new Error(`Failed to add document to "${collectionName}": ${error.message}`);
     }
   }
@@ -97,26 +83,36 @@ export class DatabaseManager {
    */
   static async queryCollection(
     collectionName: string,
-    field: string,
-    operator: FirebaseFirestoreTypes.WhereFilterOp,
-    value: any
+    field?: string,
+    operator?: FirebaseFirestoreTypes.WhereFilterOp,
+    value?: any
   ): Promise<any[]> {
     try {
-      console.log(`Attempting to query ${collectionName} where ${field} ${operator} ${value}`);
-      
+      console.log(`Attempting to query ${collectionName}`);
+  
       const colRef = collection(db, collectionName);
-      const q = query(colRef, where(field, operator, value));
-      console.log('Query created successfully');
-      
+      let q;
+  
+      if (field && operator && value) {
+        // יצירת שאילתה עם תנאי
+        q = query(colRef, where(field, operator, value));
+        console.log(`Querying ${collectionName} where ${field} ${operator} ${value}`);
+      } else {
+        // יצירת שאילתה ללא תנאי (כל המסמכים)
+        q = query(colRef);
+        console.log(`Querying all documents in ${collectionName}`);
+      }
+  
       const querySnapshot = await getDocs(q);
       console.log('Query executed successfully');
-      
+  
       const documents = querySnapshot.docs.map((doc) => ({
         id: doc.id,
-        ...doc.data(),
+        ...doc.data() as { [key: string]: any },
       }));
-      
+  
       console.log(`Retrieved ${documents.length} documents from ${collectionName}`);
+      console.log('Documents:', documents);
       return documents;
     } catch (error: any) {
       console.error('Detailed query error:', {
@@ -126,7 +122,7 @@ export class DatabaseManager {
         value,
         errorMessage: error.message,
         errorCode: error.code,
-        errorStack: error.stack
+        errorStack: error.stack,
       });
       throw new Error(`Failed to query collection: ${error.message}`);
     }

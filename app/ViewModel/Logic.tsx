@@ -1,166 +1,119 @@
-import { getAuth, GoogleAuthProvider, signInWithPopup, signInWithCredential, FacebookAuthProvider } from 'firebase/auth';
+import { getAuth, GoogleAuthProvider, signInWithCredential, FacebookAuthProvider } from 'firebase/auth';
 import { DatabaseManager } from '../Model/databaseManager';
-import { Alert, Platform } from 'react-native';
 import { GoogleSignin } from '@react-native-google-signin/google-signin';
 import { AccessToken, LoginManager } from 'react-native-fbsdk-next';
-//import { db } from '../firebaseConfig'; 
+import { getStorage, ref, uploadString } from 'firebase/storage';
+import * as ImagePicker from 'expo-image-picker';
 
-export class Writer {
+export class Logic {
   private databaseManager: DatabaseManager;
+  private messages: string[];
 
   constructor() {
-    // Initialize the DatabaseManager with the required configuration
-    //this.databaseManager = new DatabaseManager(db);
+    this.messages = [];
   }
 
-  /**
-   * Handles the sign-up process by validating input and adding the user to the database.
-   *
-   * @param username The username of the user
-   * @param email The email of the user
-   * @param password The password of the user
-   * @returns A promise resolving with success or error message
-   */
-  async signUp(
-    username: string,
-    email: string,
-    password: string,
-    confirmPassword: string,
-    agree: boolean
-  ): Promise<{ success: boolean; message: string }> {
-    // Validate inputs
-    
+  // הוספת הודעה
+  private addMessage(message: string) {
+    this.messages.push(message);
+  }
 
-    // Check if the email already exists in the database
+  // בדיקת שם משתמש
+  async validateUsername(value: string): Promise<string> {
+    if (value.trim().length < 3) {
+      return 'Username must be at least 3 characters long';
+    }
+    if (!/^[a-zA-Z0-9_.-]+$/.test(value)) {
+      return 'Username can only contain letters, numbers, underscores, and dots';
+    }
+
     try {
-      console.log('Checking email existence...');
-      const users = await DatabaseManager.queryCollection('users', 'email', '==', email);
+      const users = await DatabaseManager.queryCollection('users', 'username', '==', value);
       if (users.length > 0) {
-        return Promise.resolve({ success: false, message: 'Email already registered' });
+        return 'Username already taken';
+      }
+    } catch (error) {
+      console.error('Error checking username existence:', error);
+      return 'An error occurred while validating the username';
+    }
+
+    return '';
+  }
+
+  // בדיקת אימייל
+  async validateEmail(value: string): Promise<string> {
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(value)) {
+      return 'Please enter a valid email address';
+    }
+
+    try {
+      const users = await DatabaseManager.queryCollection('users', 'email', '==', value);
+      if (users.length > 0) {
+        return 'Email already registered';
       }
     } catch (error) {
       console.error('Error checking email existence:', error);
-      return Promise.resolve({ success: false, message: 'Error checking email. Please try again.' });
+      return 'An error occurred while validating the email';
     }
 
-    // Add the user to the database
-    try {
-      console.log('Adding user to database...');
-      await DatabaseManager.addDocument('users', { username, email, password });
-      return Promise.resolve({ success: true, message: 'Sign-up successful!' });
-    } catch (error) {
-      console.error('Error adding user to database:', error);
-      return Promise.resolve({ success: false, message: 'Error signing up. Please try again.' });
-    }
+    return '';
   }
 
-  async signInWithGoogle(): Promise<{ success: boolean; message: string }> {
-    try {
-      const auth = getAuth();
-      let user;
-  
-      if (Platform.OS === 'web') {
-        const provider = new GoogleAuthProvider();
-        const result = await signInWithPopup(auth, provider);
-        user = result.user;
-      } else {
-        await GoogleSignin.hasPlayServices();
-        const userInfo = await GoogleSignin.signIn();
-        const { idToken } = await GoogleSignin.getTokens();
-        const googleCredential = GoogleAuthProvider.credential(idToken);
-        const userCredential = await signInWithCredential(auth, googleCredential);
-        user = userCredential.user;
-      }
-  
-      // הוספת משתמש למסד הנתונים
-      try {
-        console.log('Adding user to database...');
-        await DatabaseManager.addDocument('users', {
-          uid: user.uid,
-          email: user.email,
-          displayName: user.displayName || 'User',
-          createdAt: new Date().toISOString(),
-        });
-  
-        return Promise.resolve({
-          success: true,
-          message: `Welcome ${user.displayName || 'User'}!`,
-        });
-      } catch (error) {
-        console.error('Error adding user to database:', error);
-        return Promise.resolve({
-          success: false,
-          message: 'Failed to add user to the database. Please try again.',
-        });
-      }
-    } catch (error) {
-      console.error('Google Sign-In Error:', error);
-      return Promise.resolve({
-        success: false,
-        message: error instanceof Error ? error.message : 'Google sign-in failed. Please try again.',
-      });
+  // בדיקת סיסמה
+  validatePassword(value: string): string {
+    if (value.length < 8) {
+      return 'Password must be at least 8 characters long';
     }
+    if (!/[A-Z]/.test(value)) {
+      return 'Password must contain at least one uppercase letter';
+    }
+    if (!/[0-9]/.test(value)) {
+      return 'Password must contain at least one number';
+    }
+    if (!/[!@#$%^&*]/.test(value)) {
+      return 'Password must contain at least one special character (!@#$%^&*)';
+    }
+    return '';
   }
-  async signInWithFacebook(): Promise<{ success: boolean; message: string }> {
-    interface LoginManagerType {
-      logInWithPermissions: (permissions: string[]) => Promise<{ isCancelled: boolean }>;
-    }
-    
-    interface AccessTokenType {
-      getCurrentAccessToken: () => Promise<{ accessToken: string } | null>;
-    }
-    
-    let LoginManager: LoginManagerType, 
-        AccessToken: AccessTokenType;
-    
-    // ייבוא מותנה פלטפורמה
-    if (Platform.OS !== 'web') {
-      const FBSDK = require('react-native-fbsdk-next');
-      LoginManager = FBSDK.LoginManager;
-      AccessToken = FBSDK.AccessToken;
-    }
-    try {
-      const auth = getAuth();
 
-      if (Platform.OS === 'web') {
-        const provider = new FacebookAuthProvider();
-        const result = await signInWithPopup(auth, provider);
-        const user = result.user;
-        await DatabaseManager.addDocument('users', {
-          uid: user.uid,
-          email: user.email,
-          displayName: user.displayName || 'User',
-          createdAt: new Date().toISOString(),
-        });
-        Alert.alert('Success', `Welcome ${user.displayName || 'User'}!`);
-        return { success: true, message: `Welcome ${user.displayName || 'User'}!` };
-      } else {
-        const result = await LoginManager.logInWithPermissions(['public_profile', 'email']);
-        
-        if (result.isCancelled) {
-          throw new Error('User cancelled the login process');
-        }
-        const data = await AccessToken.getCurrentAccessToken();
-        if (!data) throw new Error('Something went wrong obtaining access token');
-
-        const facebookCredential = FacebookAuthProvider.credential(data.accessToken);
-        const userCredential = await signInWithCredential(auth, facebookCredential);
-        const user = userCredential.user;
-        await DatabaseManager.addDocument('users', {
-          uid: user.uid,
-          email: user.email,
-          displayName: user.displayName || 'User',
-          createdAt: new Date().toISOString(),
-        });
-        Alert.alert('Success', `Welcome ${user.displayName || 'User'}!`);
-        return { success: true, message: `Welcome ${user.displayName || 'User'}!` };
-      }
-    } catch (error) {
-      console.error('Facebook Sign-In Error:', error);
-      Alert.alert('Error', error instanceof Error ? error.message : 'Facebook sign-in failed');
-      return { success: false, message: error instanceof Error ? error.message : 'Facebook sign-in failed' };
+  // בדיקת סיסמה חוזרת
+  validateConfirmPassword(password: string, confirmPassword: string): string {
+    if (password !== confirmPassword) {
+      return 'Passwords do not match';
     }
-  };  
+    return '';
+  }
+
+  // בדיקת הסכמה
+  validateAgreement(value: boolean): string {
+    if (!value) {
+      return 'You must agree to the terms and conditions';
+    }
+    return '';
+  }
+
+  async validateSignUpInput(username: string, email: string, password: string, confirmPassword: string, agree: boolean) {
+    this.messages = []; // איפוס הודעות
+
+    const usernameError = await this.validateUsername(username);
+    if (usernameError) this.addMessage(usernameError);
+
+    const emailError = await this.validateEmail(email);
+    if (emailError) this.addMessage(emailError);
+
+    const passwordError = this.validatePassword(password);
+    if (passwordError) this.addMessage(passwordError);
+
+    const confirmPasswordError = this.validateConfirmPassword(password, confirmPassword);
+    if (confirmPasswordError) this.addMessage(confirmPasswordError);
+
+    const agreementError = this.validateAgreement(agree);
+    if (agreementError) this.addMessage(agreementError);
+
+    if (this.messages.length > 0) {
+      return { success: false, messages: this.messages };
+    }
+    return { success: true, messages: ['Sign-up input is valid'] };
+  }
 }
-
-

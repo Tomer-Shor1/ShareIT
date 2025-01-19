@@ -125,6 +125,9 @@ const HomePage = () => {
         return (
           <View style={styles.contentWrapper}>
             <Text style={styles.menuContent}>This is the Favors Around You page.</Text>
+            <TouchableOpacity onPress={() => router.push('View/ShowRequests')}>
+              <Text>View Requests</Text>
+            </TouchableOpacity>
           </View>
         );
       default:

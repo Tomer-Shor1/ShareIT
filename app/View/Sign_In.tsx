@@ -58,6 +58,21 @@ export default function SignUpPage() {
       Alert.alert('Error', 'Failed to sign in with Facebook');
     }
   };
+//   .then(() => {
+//     console.log('User signed in');
+//     // Firestore queries can be executed now
+//   })
+//   .catch((error) => {
+//     console.error('Authentication error:', error);
+//   });
+
+    // try{
+    //   const user = await createUserWithEmailAndPassword(auth, email, password);
+    // }
+    // catch(error){
+    //   Alert.alert('Error', error instanceof Error ? error.message : 'Failed to sign up');
+    // }
+
   return (
     <View style={styles.container}>
       <Text style={styles.title}>Sign Up</Text>

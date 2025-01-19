@@ -5,6 +5,7 @@ import { GoogleSignin } from '@react-native-google-signin/google-signin';
 import { AccessToken, LoginManager } from 'react-native-fbsdk-next';
 import { getStorage, ref, uploadString } from 'firebase/storage';
 import * as ImagePicker from 'expo-image-picker';
+import { Logic } from './Logic';
 //import { db } from '../firebaseConfig'; 
 
 export class Writer {
@@ -31,7 +32,6 @@ export class Writer {
     agree: boolean
   ): Promise<{ success: boolean; message: string }> {
     // Validate inputs
-    
 
     // Check if the email already exists in the database
     try {
@@ -58,8 +58,10 @@ export class Writer {
 
   async signInWithGoogle(): Promise<{ success: boolean; message: string }> {
     try {
+
       const auth = getAuth();
       let user;
+
   
       if (Platform.OS === 'web') {
         const provider = new GoogleAuthProvider();
@@ -72,6 +74,16 @@ export class Writer {
         const googleCredential = GoogleAuthProvider.credential(idToken);
         const userCredential = await signInWithCredential(auth, googleCredential);
         user = userCredential.user;
+      }
+      try {
+        console.log('Checking email existence...');
+        const users = await DatabaseManager.queryCollection('users', 'email', '==', user.email);
+        if (users.length > 0) {
+          return Promise.resolve({ success: false, message: 'Email already registered' });
+        }
+      } catch (error) {
+        console.error('Error checking email existence:', error);
+        return Promise.resolve({ success: false, message: 'Error checking email. Please try again.' });
       }
   
       // הוספת משתמש למסד הנתונים
@@ -128,6 +140,16 @@ export class Writer {
         const provider = new FacebookAuthProvider();
         const result = await signInWithPopup(auth, provider);
         const user = result.user;
+        try {
+          console.log('Checking email existence...');
+          const users = await DatabaseManager.queryCollection('users', 'email', '==', user.email);
+          if (users.length > 0) {
+            return Promise.resolve({ success: false, message: 'Email already registered' });
+          }
+        } catch (error) {
+          console.error('Error checking email existence:', error);
+          return Promise.resolve({ success: false, message: 'Error checking email. Please try again.' });
+        }
         await DatabaseManager.addDocument('users', {
           uid: user.uid,
           email: user.email,
@@ -189,5 +211,40 @@ export class Writer {
         return { success: false, message: 'Error picking or uploading image.' };
     }
 }
+async addRequest(
+  title: string,
+  currentCoordinates: string,
+  currentAddress: string,
+  destinationCoordinates: string,
+  additionalNotes: string
+): Promise<{ success: boolean; message: string }> {
+  // בדיקת שדות חובה
+  if (!title || !currentCoordinates || !destinationCoordinates) {
+    console.error("Error: Missing required fields");
+    return Promise.resolve({ success: false, message: "Please fill in all required fields." });
+  }
+
+  // יצירת אובייקט הבקשה
+  const requestData = {
+    title,
+    currentCoordinates,
+    currentAddress: currentAddress || "", // שדה אופציונלי
+    destinationCoordinates,
+    additionalNotes: additionalNotes || "", // שדה אופציונלי
+   };
+
+  // הוספה לטבלה Open-Requests
+  try {
+    console.log("Adding request to database...");
+    console.log("Request Data:", requestData);
+    await DatabaseManager.addDocument("Open-Requests", requestData);
+    console.log("Request added successfully:", requestData);
+    return Promise.resolve({ success: true, message: "Request added successfully!" });
+  } catch (error) {
+    console.error("Error adding request to database:", error);
+    return Promise.resolve({ success: false, message: "Error adding request. Please try again." });
+  }
 }
+}
+
 
