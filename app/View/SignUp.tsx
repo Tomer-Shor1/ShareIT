@@ -3,10 +3,13 @@ import React, { useState } from 'react';
 import { View, Text, TextInput, TouchableOpacity, StyleSheet, Alert, Platform } from 'react-native';
 import { Writer } from '../ViewModel/Writer'; // Import your logic class
 import { getAuth, GoogleAuthProvider, signInWithEmailAndPassword, signInWithPopup } from 'firebase/auth';
-import { router } from 'expo-router';
+import { NavigationProp, ParamListBase } from '@react-navigation/native';
 
+interface LoginScreenProps {
+  navigation: NavigationProp<ParamListBase>;
+}
 
-export default function SignUpPage() {
+const SignUpPage: React.FC<LoginScreenProps> = ({navigation}) => {
   const [username, setUsername] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -15,10 +18,11 @@ export default function SignUpPage() {
 
   const WriterInstance = new Writer();
 
+  // this function 
   const handleGoogleSignIn = async () => {
     const result = await WriterInstance.signInWithGoogle();
     if (result.success) {
-      router.push('View/loginPage');
+      navigation.navigate("Main");
       Alert.alert('Success', result.message);
       // Navigate to the next page (e.g., HomePage)
     } else {
@@ -26,14 +30,13 @@ export default function SignUpPage() {
     }
   };
 
-
   const handleSignUp = async () => {
     const auth = getAuth();
     try {
       const result = await WriterInstance.signUp(username, email, password, confirmPassword, agreed);
       if (result.success) {
+        navigation.navigate("LogIn")
         Alert.alert('Success', result.message);
-        router.push('View/LoginPage');
       } else {
         Alert.alert('Error', result.message);
       }
@@ -48,7 +51,7 @@ export default function SignUpPage() {
       const result = await WriterInstance.signInWithFacebook();
       if (result.success) {
         console.log('User signed in');
-        router.push('View/LoginPage');
+        navigation.navigate("LogIn")
         Alert.alert('Success', result.message);
       } else {
         Alert.alert('Error', result.message);
@@ -247,3 +250,6 @@ const styles = StyleSheet.create({
     marginBottom: 15,
   },
 });
+
+
+export default SignUpPage

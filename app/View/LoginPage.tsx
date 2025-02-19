@@ -4,6 +4,7 @@ import { Reader } from '../ViewModel/Reader'; // Import your logic class
 import { getAuth, GoogleAuthProvider, signInWithEmailAndPassword, signInWithPopup } from 'firebase/auth';
 import { router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
+import { NavigationProp, ParamListBase } from '@react-navigation/native';
 
 
 import {
@@ -17,28 +18,31 @@ import {
   View,
 } from 'react-native';
 
-export default function LoginPage() {
+interface LoginScreenProps {
+  navigation: NavigationProp<ParamListBase>;
+}
+
+const LoginPage: React.FC<LoginScreenProps> = ({navigation}) => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const ReaderInstance = new Reader();
   const HanadleLogin = async () => {
-      const auth = getAuth();
-      try {
-        const result = await ReaderInstance.HandleLogins(email, password);
-        if (result.success) {
-          router.push('View/HomePage');
-        } else {
-        }
-      } catch (error) {
-        console.error('Sign up error:', error);
+    try {
+      const ReaderInstance = new Reader();
+      const result = await ReaderInstance.HandleLogins(email, password);
+      if (result.success) {
+        navigation.navigate("Main");
       }
-    };
+    } catch (error) {
+      console.error("❌ Login error:", error);
+    }
+  };
   const handleGoogleSignIn = async () => {
     try {
       const result = await ReaderInstance.LoginnWithGoogle();
       if (result.success) {
         console.log('User signed in');
-        router.push('View/HomePage');
+        navigation.navigate("Main");
         // Navigate to the next page (e.g., HomePage)
       } else {
         console.log('User not signed in');
@@ -53,7 +57,7 @@ export default function LoginPage() {
       const result = await ReaderInstance.LoginWithFacebook();
       if (result.success) {
         console.log('User signed in');
-        router.push('View/HomePage');
+        navigation.navigate("Main");
         // Navigate to the next page (e.g., HomePage)
       } else {
         console.log('User not signed in');
@@ -210,3 +214,5 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
 });
+
+export default LoginPage

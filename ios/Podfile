@@ -14,7 +14,14 @@ install! 'cocoapods',
 prepare_react_native_project!
 
 target 'myapp' do
-  use_expo_modules!
+  # ✅ Ensuring correct Facebook SDK version
+  pod 'FBSDKCoreKit', '17.4.0'
+
+  # ✅ FIX: Ensure modular headers for Firebase (Fixes import issues)
+  use_modular_headers!
+
+  # ✅ FIX: Enforce static linking (Avoids duplicate symbol issues)
+  use_frameworks! :linkage => :static
 
   if ENV['EXPO_USE_COMMUNITY_AUTOLINKING'] == '1'
     config_command = ['node', '-e', "process.argv=['', '', 'config'];require('@react-native-community/cli').run()"];
@@ -33,9 +40,6 @@ target 'myapp' do
 
   config = use_native_modules!(config_command)
 
-  use_frameworks! :linkage => podfile_properties['ios.useFrameworks'].to_sym if podfile_properties['ios.useFrameworks']
-  use_frameworks! :linkage => ENV['USE_FRAMEWORKS'].to_sym if ENV['USE_FRAMEWORKS']
-
   use_react_native!(
     :path => config[:reactNativePath],
     :hermes_enabled => podfile_properties['expo.jsEngine'] == nil || podfile_properties['expo.jsEngine'] == 'hermes',
@@ -52,8 +56,7 @@ target 'myapp' do
       :ccache_enabled => podfile_properties['apple.ccacheEnabled'] == 'true',
     )
 
-    # This is necessary for Xcode 14, because it signs resource bundles by default
-    # when building for devices.
+    # ✅ FIX: Prevent Xcode from forcing code signing on resource bundles
     installer.target_installation_results.pod_target_installation_results
       .each do |pod_name, target_installation_result|
       target_installation_result.resource_bundle_targets.each do |resource_bundle_target|

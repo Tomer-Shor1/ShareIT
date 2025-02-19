@@ -6,19 +6,19 @@ import { getStorage, ref, uploadString } from 'firebase/storage';
 import * as ImagePicker from 'expo-image-picker';
 
 export class Logic {
-  private databaseManager: DatabaseManager;
+  private databaseManager: DatabaseManager; // instance of the database manager
   private messages: string[];
 
   constructor() {
     this.messages = [];
   }
 
-  // הוספת הודעה
+  //  
   private addMessage(message: string) {
     this.messages.push(message);
   }
 
-  // בדיקת שם משתמש
+  // username check
   async validateUsername(value: string): Promise<string> {
     if (value.trim().length < 3) {
       return 'Username must be at least 3 characters long';
@@ -40,7 +40,7 @@ export class Logic {
     return '';
   }
 
-  // בדיקת אימייל
+  // email check
   async validateEmail(value: string): Promise<string> {
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     if (!emailRegex.test(value)) {
@@ -60,7 +60,7 @@ export class Logic {
     return '';
   }
 
-  // בדיקת סיסמה
+  // password check
   validatePassword(value: string): string {
     if (value.length < 8) {
       return 'Password must be at least 8 characters long';
@@ -77,7 +77,7 @@ export class Logic {
     return '';
   }
 
-  // בדיקת סיסמה חוזרת
+  // password confirmation check
   validateConfirmPassword(password: string, confirmPassword: string): string {
     if (password !== confirmPassword) {
       return 'Passwords do not match';
@@ -85,7 +85,7 @@ export class Logic {
     return '';
   }
 
-  // בדיקת הסכמה
+  // agreement check
   validateAgreement(value: boolean): string {
     if (!value) {
       return 'You must agree to the terms and conditions';

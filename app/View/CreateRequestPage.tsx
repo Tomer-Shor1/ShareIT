@@ -1,4 +1,7 @@
 import React, { useState, useEffect } from 'react';
+import { getAuth, onAuthStateChanged } from 'firebase/auth';
+import { DatabaseManager } from '../Model/databaseManager'; // Import your logic class
+import { Reader } from '../ViewModel/Reader';
 import { NavigationProp } from '@react-navigation/native';
 import {
   View,
@@ -13,20 +16,23 @@ import {
 } from 'react-native';
 import { Writer } from '../ViewModel/Writer'; // Import your logic class
 import { Ionicons } from '@expo/vector-icons';
-import { LoadScript, Autocomplete } from '@react-google-maps/api';
+import { LoadScript, Autocomplete, Libraries } from '@react-google-maps/api';
 import * as Location from 'expo-location';
 
 const GOOGLE_API_KEY = 'AIzaSyAvIDbKAaM57QVUK6Pmw5koJ-LUYOOzjjE';
 const CreateRequestScreen = ({ navigation }: { navigation: NavigationProp<any> }) => {
   const [title, setTitle] = useState('');
+  const [phoneNumberm, setPhoneNumber] = useState('');
   const [currentAddress, setCurrentAddress] = useState('');
   const [currentCoordinates, setCurrentCoordinates] = useState<{ latitude: number; longitude: number } | null>(null);
-  const [destinationCoordinates, setDestinationCoordinates] = useState<{ latitude: number; longitude: number } | null>(null);
+  const [DestinationLoaction,setDestinationLoaction] = useState('');
   const [additionalNotes, setAdditionalNotes] = useState('');
+  const [takenBy, setTakenBy] = useState('');
   const [loading, setLoading] = useState(false);
   const [currentAutocomplete, setCurrentAutocomplete] = useState<google.maps.places.Autocomplete | null>(null);
   const [destinationAutocomplete, setDestinationAutocomplete] = useState<google.maps.places.Autocomplete | null>(null);
-  const writer = new Writer(); // יצירת מופע של Writer
+  const googleLibraries: Libraries = ['places'];
+  const writer = new Writer(); // ֿWriter
   const fetchCurrentLocation = async () => {
     try {
       setLoading(true);
@@ -71,41 +77,74 @@ const CreateRequestScreen = ({ navigation }: { navigation: NavigationProp<any> }
     }
   };
 
-  const onDestinationPlaceChanged = () => {
-    if (destinationAutocomplete) {
-      const place = destinationAutocomplete.getPlace();
-      if (place.geometry && place.geometry.location) {
-        const lat = place.geometry.location.lat();
-        const lng = place.geometry.location.lng();
-        setDestinationCoordinates({ latitude: lat, longitude: lng });
+  
+
+
+async function getUser(): Promise<string | null> {
+  return new Promise((resolve) => {
+    const auth = getAuth();
+    onAuthStateChanged(auth, (user) => {
+      if (user) {
+        console.log(`✅ User is logged in: ${user.email} (${user.uid})`);
+        resolve(user.uid);
+      } else {
+        console.log("❌ No user logged in");
+        resolve(null);
       }
-    }
-  };
+    });
+  });
+}
 
   const handleSubmit = async () => {
+    try {
+      const user = await Reader.getCurrentUser();
+      if (!user) {
+        Alert.alert("Error", "You must be logged in to create a request.");
+        return;
+      }
 
-    // קריאה לפונקציה addRequest
-    const response = await writer.addRequest(
-      title,
-      currentCoordinates ? `${currentCoordinates.latitude},${currentCoordinates.longitude}` : '',
-      currentAddress,
-      destinationCoordinates ? `${destinationCoordinates.latitude},${destinationCoordinates.longitude}` : '',
-      additionalNotes
-    );
-
-    if (response.success) {
-      Alert.alert("Success", response.message);
-      console.log("Request added successfully");
-      // איפוס השדות לאחר יצירת הבקשה
-      setTitle("");
-      setCurrentCoordinates(null);
-      setCurrentAddress("");
-      setDestinationCoordinates(null);
-      setAdditionalNotes("");
-    } else {
-      Alert.alert("Error", response.message);
-      console.error(response.message);
+      const userId =  user.uid;
+  
+      const userCoins = await DatabaseManager.getUserCoins(userId);
+      if (userCoins === null || userCoins < 1) {
+        Alert.alert("Not enough coins", "You need at least 1 coin to create a request.");
+        return;
+      }
+      
+      console.log("Adding request!!!!!");
+      // ✅ Proceed with adding the request
+      const response = await writer.addRequest(
+        title,
+        currentCoordinates ? `${currentCoordinates.latitude},${currentCoordinates.longitude}` : '',
+        currentAddress,
+        DestinationLoaction,
+        additionalNotes,
+        phoneNumberm,
+        takenBy
+      );
+  
+      if (response.success) {
+        //  Deduct 1 coin from the user
+        await DatabaseManager.addCoinsToUser(userId, -1); // Subtract 1 coin
+        Alert.alert("Success", "Request added successfully");
+        console.log("Request added successfully");
+  
+        // Reset form fields
+        setTitle("");
+        setCurrentAddress("");
+        setPhoneNumber("");
+        setDestinationLoaction("");
+        setAdditionalNotes("");
+        setTakenBy("");
+        
+      } else {
+        Alert.alert("Error", response.message);
+      }
+    } catch (error) {
+      Alert.alert("Error", "Failed to add request");
+      console.error(error);
     }
+    navigation.navigate('Main');
   };
 
   return (
@@ -117,7 +156,7 @@ const CreateRequestScreen = ({ navigation }: { navigation: NavigationProp<any> }
       )}
       <ScrollView contentContainerStyle={styles.scrollContent}>
         <View style={styles.header}>
-          <TouchableOpacity onPress={() => navigation.navigate('Home')} style={styles.backButton}>
+          <TouchableOpacity onPress={() => navigation.navigate('Main')} style={styles.backButton}>
             <Ionicons name="arrow-back-outline" size={24} color="#2C3E50" />
           </TouchableOpacity>
           <Text style={styles.headerTitle}>Create Request</Text>
@@ -134,9 +173,10 @@ const CreateRequestScreen = ({ navigation }: { navigation: NavigationProp<any> }
           />
         </View>
 
+
         <View style={styles.inputGroup}>
           <Text style={styles.label}>Your Current Location</Text>
-          <LoadScript googleMapsApiKey={GOOGLE_API_KEY} libraries={['places']}>
+          <LoadScript googleMapsApiKey={GOOGLE_API_KEY} libraries={googleLibraries}>
             <Autocomplete
               onLoad={(autocomplete) => setCurrentAutocomplete(autocomplete)}
               onPlaceChanged={onCurrentPlaceChanged}
@@ -157,15 +197,29 @@ const CreateRequestScreen = ({ navigation }: { navigation: NavigationProp<any> }
           <LoadScript googleMapsApiKey={GOOGLE_API_KEY} libraries={['places']}>
             <Autocomplete
               onLoad={(autocomplete) => setDestinationAutocomplete(autocomplete)}
-              onPlaceChanged={onDestinationPlaceChanged}
-            >
+              >
               <TextInput
                 style={styles.input}
                 placeholder="Enter destination address..."
                 placeholderTextColor="#8E8E93"
+                value={DestinationLoaction}
+                onChangeText={(text) => setDestinationLoaction(text)}
               />
             </Autocomplete>
           </LoadScript>
+        </View>
+
+        <View style={styles.inputGroup}>
+          <Text style={styles.label}>Phone-Number</Text>
+          <TextInput
+            style={styles.textArea}
+            placeholder="Write your phone number..."
+            placeholderTextColor="#8E8E93"
+            multiline
+            numberOfLines={4}
+            value={phoneNumberm}
+            onChangeText={setPhoneNumber}
+          />
         </View>
 
         <View style={styles.inputGroup}>
@@ -182,11 +236,11 @@ const CreateRequestScreen = ({ navigation }: { navigation: NavigationProp<any> }
         </View>
 
         <View style={styles.buttonsContainer}>
-          <TouchableOpacity style={styles.cancelButton} onPress={() => navigation.navigate('Home')}>
+          <TouchableOpacity style={styles.cancelButton} onPress={() => navigation.navigate('Main')}>
             <Text style={styles.cancelButtonText}>Cancel</Text>
           </TouchableOpacity>
           <TouchableOpacity style={styles.submitButton} onPress={handleSubmit}>
-            <Text style={styles.submitButtonText}>Submit</Text>
+            <Text style={styles.submitButtonText}>Submit Favor</Text>
           </TouchableOpacity>
         </View>
       </ScrollView>

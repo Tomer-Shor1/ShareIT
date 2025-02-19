@@ -1,0 +1,8 @@
+{
+  "android": {
+    "package": "com.tomershor.myapp"
+  },
+  "ios": {
+    "bundleIdentifier": "com.tomershor.myapp"
+  }
+}
