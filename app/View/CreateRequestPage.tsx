@@ -124,8 +124,17 @@ async function getUser(): Promise<string | null> {
       );
   
       if (response.success) {
-        //  Deduct 1 coin from the user
-        await DatabaseManager.addCoinsToUser(userId, -1); // Subtract 1 coin
+
+        // set deduct amount
+        let deductAmount = -1;
+        let isUserSubscribed = await DatabaseManager.isUserSubscribed(userId);
+
+        if (isUserSubscribed) { // if user is subscribed, deduct half of the original price
+          await DatabaseManager.addCoinsToUser(userId, deductAmount * 0.5); 
+        }
+        else{   // if user is not subscribed, deduct the original price
+          await DatabaseManager.addCoinsToUser(userId, deductAmount); 
+        }
         Alert.alert("Success", "Request added successfully");
         console.log("Request added successfully");
   

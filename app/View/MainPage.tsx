@@ -12,7 +12,7 @@ import {
 } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 import { useRouter } from 'expo-router';
-import { getFirestore, doc, setDoc, getDoc } from 'firebase/firestore';
+import { getFirestore, doc, setDoc, getDoc, onSnapshot, query, where, collection } from 'firebase/firestore';
 import { getAuth , onAuthStateChanged, User} from 'firebase/auth';
 import { useNavigation } from "@react-navigation/native";
 import { StackNavigationProp } from "@react-navigation/stack";
@@ -24,6 +24,12 @@ import { getTabBarHeight } from '@react-navigation/bottom-tabs/lib/typescript/co
 import * as Location from "expo-location";
 import ProfilePicture from "./ProfileDropDown"
 import { PaperProvider } from 'react-native-paper';
+import FloatingChatWidget from "./ExpandWidget"
+import { DatabaseManager } from '../Model/databaseManager';
+import { MapContainer, TileLayer, Marker, Popup, MarkerProps } from 'react-leaflet';
+import { LatLngExpression, Icon } from 'leaflet';
+import 'leaflet/dist/leaflet.css';
+
 
 // ✅ Import correct map library depending on platform
 // let MapComponent;
@@ -39,6 +45,9 @@ import { PaperProvider } from 'react-native-paper';
 
 type NavigationProp = StackNavigationProp<RootStackParamList>;
 
+
+
+
 const MainPage = () => {
   const [profileImage, setProfileImage] = useState<string | null>(null);
   const [username, setUsername] = useState<string>("User");
@@ -49,10 +58,50 @@ const MainPage = () => {
   const auth = getAuth();
   const ReaderInstance = new Reader();
   const navigation = useNavigation<NavigationProp>();
-  const [userLocation, setUserLocation] = useState<{ latitude: number; longitude: number } | null>(null);
+  const [userLocation, setUserLocation] = useState<LatLngExpression | null>(null);
   const [requests, setRequests] = useState<any[]>([]);
+  const [userCoins, setUserCoins] = useState<number | null>(null);
+  const [locationLoaded, setLocationLoaded] = useState(false);
+  const [myRequests, setMyRequests] = useState<any[]>([]);
+  const [loadMap, setLoadMap] = useState<boolean>(true);
+  const [res, setRes] = useState(null);
 
+  // recover balance everytime it changes
+  useEffect(() => {
+    const q = query(collection(DatabaseManager.getDB(), "users"), where("uid", "==", uid));
+    const unsubscribe = onSnapshot(q, (querySnapshot) => {
+      querySnapshot.forEach((doc) => {
+        setUserCoins(doc.data().coins)
+      })
+    });
+
+    // Cleanup the listener on unmount
+    return () => unsubscribe();
+  }, [uid]);
+
+
+  // recover user's own requests
+  useEffect(() => {
+    const q = query(collection(DatabaseManager.getDB(), "Open-Requests"), where("uid", "==", uid));
+    const unsubscribe = onSnapshot(q, (querySnapshot) => { 
+      setMyRequests(Reader.refrenceToDocument(querySnapshot.docs, null))
+  });
   
+   // Cleanup the listener on unmount
+   return () => unsubscribe();
+  }, [uid]);
+
+
+  // recover open requests by other users
+  useEffect(() => {
+    const q = query(collection(DatabaseManager.getDB(), "Open-Requests"), where("uid", "!=", uid));
+    const unsubscribe = onSnapshot(q, (querySnapshot) => {
+      setRequests(Reader.refrenceToDocument(querySnapshot.docs, uid));
+  });
+  
+   // Cleanup the listener on unmount
+   return () => unsubscribe();
+  }, [uid]);
 
   // ✅ Listen for authentication state changes
   useEffect(() => {
@@ -103,6 +152,7 @@ const MainPage = () => {
   }, [uid]);
 
 
+
   // ✅ Step 2: Function to fetch profile image
   const fetchProfileImage = async (uid: string) => {
     try {
@@ -114,8 +164,6 @@ const MainPage = () => {
       if (userDocRef.exists()) {
         const userData = userDocRef.data();
         const base64Data = userData?.picture || null;
-        console.log("✅ Profile image found:", base64Data ? "Yes" : "No");
-        console.log("✅ Profile image data:", base64Data);
         setProfileImage(base64Data);
       } else {
         console.warn(`⚠️ No profile image found for user ${uid}`);
@@ -173,29 +221,47 @@ const MainPage = () => {
     });
   };
 
-  const renderContent = () => {
-    switch (selectedMenu) {
-      case 'Profile':
-        return (
-          <View style={styles.contentWrapper}>
-            <Text style={styles.menuContent}>Profile page.</Text>
-          </View>
-        );
+
+
+    // ✅ טעינת הבקשות והצגתן על המפה
+    useEffect(() => {
+      const fetchRequests = async () => {
+        try {
+          const fetchedRequests = await ReaderInstance.ReadOpenRequests(); 
+          setRequests(fetchedRequests);
+        } catch (error) {
+          console.error("❌ Error fetching requests:", error);
+        }
+      };
+      fetchRequests();
+    }, []);
+  
+    // ✅ בקשת הרשאה וקבלת מיקום GPS
+    useEffect(() => {
+      (async () => {
+        const { status } = await Location.requestForegroundPermissionsAsync();
+        if (status !== "granted") {
+          console.log("❌ Permission to access location was denied");
+          Alert.alert("Error", "We couldn't get your location. Loading default view.");
+          // נציב מיקום ברירת מחדל ונמשיך
+          setUserLocation([31.5, 34.75]); 
+          setLocationLoaded(true);
+          return;
+        }
+        const location = await Location.getCurrentPositionAsync({});
+        setUserLocation([location.coords.latitude, location.coords.longitude]);
+        setLocationLoaded(true);
+      })();
+    }, []);
+  
+
+  const renderContent = (option) => {
+    setLoadMap(false);
+    setSelectedMenu(option)
+    switch (option) {
       case 'Create Request':
         navigation.navigate("CreateRequest");
         return null; // No content to render
-      case 'Settings':
-        return (
-          <View style={styles.contentWrapper}>
-            <Text style={styles.menuContent}> Settings </Text>
-          </View>
-        );
-      case 'Groups':
-        return (
-          <View style={styles.contentWrapper}>
-            <Text style={styles.menuContent}>Groups</Text>
-          </View>
-        );
         case 'Favors':
           return (
             <View style={styles.contentWrapper}>
@@ -203,7 +269,10 @@ const MainPage = () => {
               <MyFavorsTab />
             </View>
           );
+        case "Home":
+          setLoadMap(true);
       default:
+        
         // return (
         //   // <View style={styles.contentWrapper}>
         //   //   <TouchableOpacity style={styles.uploadSection} onPress={pickImage}>
@@ -220,46 +289,155 @@ const MainPage = () => {
         // );
     }
   };
-  const handleOptionSelect = (option) => {
-    Alert.alert('Selected Option', option);
-};
+  const handleOptionSelect = (option: string) => {
+    const trimmedOption = option.trim();
+    console.log("Selected option:", JSON.stringify(trimmedOption));
+    switch (trimmedOption) {
+      case "👤Profile":
+        navigation.navigate("ProfilePage");
+        break;
+      case "💰Balance":
+
+        break;
+      case "⚙️Settings":
+
+        break;
+      case "❌Log Out":
+        handleLogout();
+        break;
+      default:
+
+    }
+  };
+
+  // ✅ אייקון למיקום המשתמש
+  const userIcon: Icon = new Icon({
+    iconUrl: "/app/View/Images/RequestIcon.jpg", // הנתיב המלא מהשורש
+    iconSize: [60, 60],
+    iconAnchor: [30, 60],
+    popupAnchor: [0, -60],
+  });
+  
+
+// ✅ אייקון ברירת מחדל לבקשות
+const requestDefaultIcon = new Icon({
+  iconUrl: "/request-default.png", // תמונה שתשים ב-public/
+  iconSize: [50, 50],
+  iconAnchor: [25, 50],
+  popupAnchor: [0, -50],
+});
+
+
+
+
+
+  const balance = userCoins !== null ? `💰Balance: ${userCoins}` : "💰Balance: Loading...";
+
+  const headers = ["👤Profile", balance, "⚙️Settings", "❌Log Out"];  // the menu headers
+
+
+  const center: LatLngExpression = [userLocation?.[0] ?? 31.5, userLocation?.[1] ?? 34.75];
   return (
     <PaperProvider>
-    <SafeAreaView style={styles.container}>
-      {/* Header */}
-      <View style={styles.header}>
-        <View style={styles.headerContent}>
+      <SafeAreaView style={styles.container}>
+        {/* Header */}
+        <View style={styles.header}>
+          <View style={styles.headerContent}>
             <ProfilePicture 
-                base64Image={profileImage} 
-                onOptionSelect={handleOptionSelect} 
+              base64Image={profileImage}
+              headers={headers}
+              onOptionSelect={handleOptionSelect}
             />
-          <View>
-            <Text style={styles.welcomeText}>Welcome Back</Text>
-            <Text style={styles.usernameText}>{username}</Text>
+            <View>
+              <Text style={styles.welcomeText}>Welcome Back</Text>
+              <Text style={styles.usernameText}>{username}</Text>
+            </View>
           </View>
         </View>
-        <TouchableOpacity onPress={handleLogout}>
-          <Text style={styles.logout}>Logout</Text>
-        </TouchableOpacity>
-      </View>
   
-      {/* Content */}
-      <View style={styles.contentWrapper}>{renderContent()}</View>
+        {/* Main Content */}
+        <View style={styles.mainContent}>
+          {loadMap ? (
+            <View style={styles.mapWrapper}>
+              {locationLoaded ? (
+                <MapContainer center={center} zoom={15} style={styles.map}>
+                  <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
+                  {/* User marker */}
+                  {userLocation && (
+                    <Marker 
+                      position={userLocation as [number, number]} 
+                      {...{ icon: userIcon }}
+                    >
+                      <Popup>📍 You are here</Popup>
+                    </Marker>
+                  )}
+                  {/* Request markers */}
+                  {requests.map((req) => {
+                    if (!req.currentCoordinates) return null;
+                    const coordsArr = req.currentCoordinates.split(",").map(parseFloat);
+                    if (
+                      coordsArr.length !== 2 ||
+                      isNaN(coordsArr[0]) ||
+                      isNaN(coordsArr[1])
+                    ) {
+                      return null;
+                    }
+                    return (
+                      <Marker
+                        key={req.id}
+                        position={[coordsArr[0], coordsArr[1]] as [number, number]}
+                        {...{ icon: requestDefaultIcon }}
+                      >
+                        <Popup>
+                          <Text style={{ fontWeight: 'bold' }}>{req.title}</Text>
+                          <Text>📍 {req.currentAddress}</Text>
+                          <Text>📌 {req.DestinationLoaction}</Text>
+                          <Text>☎ {req.phoneNumber}</Text>
+                        </Popup>
+                      </Marker>
+                    );
+                  })}
+                </MapContainer>
+              ) : (
+                <Text style={styles.loadingText}>📍 Getting your location...</Text>
+              )}
+            </View>
+          ) : (
+            // When loadMap is false, show the table content (result from renderContent)
+            <View style={styles.contentWrapper}>
+              {res}
+            </View>
+          )}
+        </View>
   
-      {/* Bottom Menu */}
-      <View style={styles.menuBar}>
-        {["Home", "Profile", "Create Request", "Settings", "Groups", "Favors"].map((menu) => (
-          <TouchableOpacity key={menu} style={styles.menuItem} onPress={() => setSelectedMenu(menu)}>
-            <Text style={selectedMenu === menu ? styles.menuTextSelected : styles.menuText}>{menu}</Text>
-          </TouchableOpacity>
-        ))}
-      </View>
-    </SafeAreaView>
+        {/* Bottom Menu */}
+        <View style={styles.menuBar}>
+          {["Home", "Create Request", "Favors"].map((menu) => (
+            <TouchableOpacity
+              key={menu}
+              style={styles.menuItem}
+              onPress={() => {
+                const result = renderContent(menu);
+                setRes(result);
+                setSelectedMenu(menu);
+              }}
+            >
+              <Text
+                style={
+                  selectedMenu === menu ? styles.menuTextSelected : styles.menuText
+                }
+              >
+                {menu}
+              </Text>
+            </TouchableOpacity>
+          ))}
+        </View>
+      </SafeAreaView>
     </PaperProvider>
-  );  
+  );
 };
 
-export default MainPage;
+export default MainPage
 
 const styles = StyleSheet.create({
   container: {
@@ -282,11 +460,40 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
   },
+  // New style for main content area:
+  mainContent: {
+    flex: 1, // occupies remaining vertical space
+  },
+  menuBar: {
+    flexDirection: 'row',
+    justifyContent: 'space-around',
+    backgroundColor: '#ffffff',
+    paddingVertical: 10,
+    borderTopWidth: 1,
+    borderTopColor: '#d1d8e0',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: -2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  loadingText: {
+    textAlign: 'center',
+    fontSize: 16,
+    marginTop: 20,
+  },
+  mapWrapper: {
+    flex: 1,
+    width: '100%',
+  },
   map: {
-    width: "100%",
-    height: 300, // Adjust height as needed
-    borderRadius: 10,
-    marginVertical: 10,
+    flex: 1,
+    width: '100%',
+    height: '100%',
+  },
+  rightContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
   },
   profileImage: {
     width: 50,
@@ -350,19 +557,6 @@ const styles = StyleSheet.create({
     color: '#7d8ca1',
     textAlign: 'center',
   },
-  menuBar: {
-    flexDirection: 'row',
-    justifyContent: 'space-around',
-    backgroundColor: '#ffffff',
-    paddingVertical: 10,
-    borderTopWidth: 1,
-    borderTopColor: '#d1d8e0',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: -2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
-  },
   menuItem: {
     alignItems: 'center',
   },
@@ -378,5 +572,11 @@ const styles = StyleSheet.create({
   menuContent: {
     fontSize: 20,
     color: '#34495e',
+  },
+  widgetContainer: {
+    justifyContent: 'center',
+    alignItems: 'center',
+    bottom: 20,
+    right: 20,
   },
 });

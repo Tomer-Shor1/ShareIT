@@ -257,6 +257,7 @@ if (!auth.currentUser) {
         console.error(`❌ User document not found for UID: ${userUID}`);
         return null;
       }
+      console.log("OZGOMORECHAC");
 
       // ✅ Get the first document (assuming UID is unique)
       const userDoc: DocumentData = querySnapshot.docs[0].data();
@@ -449,8 +450,6 @@ static async getRequestsOpenedByUser(userId?: string): Promise<any[]> {
 }
 
 
-
-
 async getTableEntranceByKey(table_name, entrance_key){
   const docRef = doc(DatabaseManager.db, table_name, entrance_key);
   if (!docRef) {
@@ -458,6 +457,28 @@ async getTableEntranceByKey(table_name, entrance_key){
     return null;
   }
   return docRef;
+}
+
+
+static async isUserSubscribed(uid: string){
+  try {
+    const userDocRef = await this.db.getTableEntranceByKey("users", uid);
+    const userDoc = await getDoc(userDocRef);
+
+    if (userDoc.exists()) {
+      const data = userDoc.data();
+      if (!data) {
+        console.error("User document is empty:", userDoc);
+        return false;
+      }
+      // Treat null or undefined as not subscribed; only 1 indicates a subscription.
+      return (data as { subscribed: number }).subscribed === 1;
+    }
+    return false;
+  } catch (error) {
+    console.error("Error checking subscription status:", error);
+    return false;
+  }
 }
 
   /**

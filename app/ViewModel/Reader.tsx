@@ -141,7 +141,7 @@ export class Reader {
   // Read open requests from the database - returns an array of requests
   async ReadOpenRequests(): Promise<any[]> {
     try {
-      const requests: any[] = [];
+      // let requests: any[] = [];
       
       // Get the current user's UID (or empty string if not logged in)
       const auth = getAuth();   // could be const auth = getAuth();   --- need to 
@@ -150,46 +150,91 @@ export class Reader {
       // Query the "Open-Requests" collection
       const querySnapshot = await DatabaseManager.queryCollection('Open-Requests', null, null, null);
       console.log("Query executed successfully");
-    
-  
-      for (const doc of querySnapshot) {
-        if (doc && doc.id) {
-          const data = doc.data ? doc.data() : doc; // Retrieve data from the document
-  
-          // Filter: if the request has a "takenBy" field equal to the current user's UID, skip it.
-          if (data.uid && data.uid === currentUserId) {
-            console.log(`Skipping request ${doc.id} because it was opened by the current user!`);
-            continue;
-          }
-  
-          const request = { 
-            id: doc.id,                                           // Document ID
-            title: data.title || "",                              // "title" field
-            currentCoordinates: data.currentCoordinates || "",    // "currentCoordinates"
-            currentAddress: data.currentAddress || "",            // "currentAddress"
-            DestinationLoaction: data.DestinationLoaction || "",  // "destinationCoordinates"
-            additionalNotes: data.additionalNotes || "",          // "additionalNotes"
-            phoneNumber: data.phoneNumber || "",                  // "phoneNumber"
-            timestamp: data.timestamp || "",                      // "timestamp"
-            uid: data.uid || "",                                  // "uid"
-            createdAt: data.createdAt || "",                      // "createdAt"
-            updatedAt: data.updatedAt || "",                      // "updatedAt"
-            caught: data.caught || false,                         // "caught" boolean
-          };
-  
-          // Add the filtered request to the array.
-          requests.push(request);
-        } else {
-          console.log(`Skipping request with ID: ${doc.id} - Data not available.`);
-        }
-      }
       
-      console.log("Successfully retrieved Open-Requests:", requests);
-      return requests;
-    } catch (error) {
+      let requests = Reader.refrenceToDocument(querySnapshot, currentUserId);
+  
+    //   for (const doc of querySnapshot) {
+    //     if (doc && doc.id) {
+    //       const data = doc.data ? doc.data() : doc; // Retrieve data from the document
+  
+    //       // Filter: if the request has a "takenBy" field equal to the current user's UID, skip it.
+    //       if (data.uid && data.uid === currentUserId) {
+    //         console.log(`Skipping request ${doc.id} because it was opened by the current user!`);
+    //         continue;
+    //       }
+  
+    //       const request = { 
+    //         id: doc.id,                                           // Document ID
+    //         title: data.title || "",                              // "title" field
+    //         currentCoordinates: data.currentCoordinates || "",    // "currentCoordinates"
+    //         currentAddress: data.currentAddress || "",            // "currentAddress"
+    //         DestinationLoaction: data.DestinationLoaction || "",  // "destinationCoordinates"
+    //         additionalNotes: data.additionalNotes || "",          // "additionalNotes"
+    //         phoneNumber: data.phoneNumber || "",                  // "phoneNumber"
+    //         timestamp: data.timestamp || "",                      // "timestamp"
+    //         uid: data.uid || "",                                  // "uid"
+    //         createdAt: data.createdAt || "",                      // "createdAt"
+    //         updatedAt: data.updatedAt || "",                      // "updatedAt"
+    //         caught: data.caught || false,                         // "caught" boolean
+    //       };
+  
+    //       // Add the filtered request to the array.
+    //       requests.push(request);
+    //     } else {
+    //       console.log(`Skipping request with ID: ${doc.id} - Data not available.`);
+    //     }
+    //   }
+      
+    //   console.log("Successfully retrieved Open-Requests:", requests);
+    //   return requests;
+    // } 
+    return requests;
+    }catch (error) {
       console.error("Error reading open requests:", error);
       throw new Error("Failed to read open requests");
+      }
     }
+
+  // this function returns the requests that were opened by the user
+  // the function receives the querySnapshot and the user's UID and returns an array of requests
+  // 
+  static refrenceToDocument(querySnapshot: any, UserId: string){
+    let requests: any[] = [];
+
+    for (const doc of querySnapshot) {
+      if (doc && doc.id) {
+        const data = doc.data ? doc.data() : doc; // Retrieve data from the document
+
+        // Filter: if the request has a "takenBy" field equal to the current user's UID, skip it.
+        if (data.uid && data.uid === UserId) {
+          console.log(`Skipping request ${doc.id} because it was opened by the current user!`);
+          continue;
+        }
+
+        const request = { 
+          id: doc.id,                                           // Document ID
+          title: data.title || "",                              // "title" field
+          currentCoordinates: data.currentCoordinates || "",    // "currentCoordinates"
+          currentAddress: data.currentAddress || "",            // "currentAddress"
+          DestinationLoaction: data.DestinationLoaction || "",  // "destinationCoordinates"
+          additionalNotes: data.additionalNotes || "",          // "additionalNotes"
+          phoneNumber: data.phoneNumber || "",                  // "phoneNumber"
+          timestamp: data.timestamp || "",                      // "timestamp"
+          uid: data.uid || "",                                  // "uid"
+          createdAt: data.createdAt || "",                      // "createdAt"
+          updatedAt: data.updatedAt || "",                      // "updatedAt"
+          caught: data.caught || false,                         // "caught" boolean
+        };
+
+        // Add the filtered request to the array.
+        requests.push(request);
+      } else {
+        console.log(`Skipping request with ID: ${doc.id} - Data not available.`);
+      }
+    }
+    
+    console.log("Successfully retrieved Open-Requests:", requests);
+    return requests;
   }
 
 
