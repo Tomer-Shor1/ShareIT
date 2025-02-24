@@ -1,4 +1,10 @@
-import React, { useState, useEffect } from 'react';
+// TODO
+// 1. buy coins menu
+// 2 completer full transaction
+
+
+
+import React, { useState, useEffect, useMemo } from 'react';
 import {
   View,
   Text,
@@ -11,24 +17,25 @@ import {
   Platform,
 } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
-import { useRouter } from 'expo-router';
-import { getFirestore, doc, setDoc, getDoc, onSnapshot, query, where, collection } from 'firebase/firestore';
+import { setDoc,doc, getDoc, onSnapshot, query, where, collection, } from 'firebase/firestore';
 import { getAuth , onAuthStateChanged, User} from 'firebase/auth';
 import { useNavigation } from "@react-navigation/native";
 import { StackNavigationProp } from "@react-navigation/stack";
 import { RootStackParamList } from './route';
-import FavorsTab, {MyFavorsTab} from './ShowRequests';
+import FavorsTab, { MyFavorsTab } from './ShowRequests';
 import { Reader } from '../ViewModel/Reader';
-import { firebase } from '@react-native-firebase/firestore';
-import { getTabBarHeight } from '@react-navigation/bottom-tabs/lib/typescript/commonjs/src/views/BottomTabBar';
+
+import { sendNotification } from './NotificationService';
 import * as Location from "expo-location";
 import ProfilePicture from "./ProfileDropDown"
 import { PaperProvider } from 'react-native-paper';
-import FloatingChatWidget from "./ExpandWidget"
+import FloatingActionButton from "./ExpandWidget"
 import { DatabaseManager } from '../Model/databaseManager';
 import { MapContainer, TileLayer, Marker, Popup, MarkerProps } from 'react-leaflet';
 import { LatLngExpression, Icon } from 'leaflet';
 import 'leaflet/dist/leaflet.css';
+
+
 
 
 // ✅ Import correct map library depending on platform
@@ -53,7 +60,6 @@ const MainPage = () => {
   const [username, setUsername] = useState<string>("User");
   const [user, setUser] = useState<User | null>(null); // ✅ Track user state
   const [uid, setUID] = useState<string>(null); // ✅ Track user ID
-  const [isModalVisible, setIsModalVisible] = useState(false); // For showing full-screen image
   const [selectedMenu, setSelectedMenu] = useState('Home'); // Current menu selection
   const auth = getAuth();
   const ReaderInstance = new Reader();
@@ -63,10 +69,19 @@ const MainPage = () => {
   const [userCoins, setUserCoins] = useState<number | null>(null);
   const [locationLoaded, setLocationLoaded] = useState(false);
   const [myRequests, setMyRequests] = useState<any[]>([]);
+  const [activeRequestsInfo, setActiveRequestInfo] = useState<any[]>([]);
   const [loadMap, setLoadMap] = useState<boolean>(true);
   const [res, setRes] = useState(null);
+  const [requestImage, setRequestImage] = useState<string | null>(null);
+  const [myLocationImage, setMylocationImage] = useState<string | null>(null);
+  //const [myLocationIcon, setMyLoactionIcon] = useState<string | null>(null);
 
-  // recover balance everytime it changes
+
+
+
+  
+
+  // recover dynamicly balance everytime it changes
   useEffect(() => {
     const q = query(collection(DatabaseManager.getDB(), "users"), where("uid", "==", uid));
     const unsubscribe = onSnapshot(q, (querySnapshot) => {
@@ -80,15 +95,48 @@ const MainPage = () => {
   }, [uid]);
 
 
-  // recover user's own requests
   useEffect(() => {
-    const q = query(collection(DatabaseManager.getDB(), "Open-Requests"), where("uid", "==", uid));
-    const unsubscribe = onSnapshot(q, (querySnapshot) => { 
-      setMyRequests(Reader.refrenceToDocument(querySnapshot.docs, null))
-  });
+    if (!uid) return;
   
-   // Cleanup the listener on unmount
-   return () => unsubscribe();
+    const q = query(
+      collection(DatabaseManager.getDB(), "Open-Requests"),
+      where("uid", "==", uid)
+    );
+    
+    const unsubscribe = onSnapshot(q, (querySnapshot) => {
+      const updatedRequests = Reader.refrenceToDocument(querySnapshot.docs);
+      setMyRequests(updatedRequests);
+      console.log("Snapshot received. Processing changes...");
+  
+      querySnapshot.docChanges().forEach((change) => {
+        const data = change.doc.data();
+        console.log("Change type:", change.type, "Data:", data);
+  
+        if (change.type === 'modified') {
+          if (data.status === "ongoing") {
+            console.log("Detected 'ongoing' status change.");
+            sendNotification(
+              "Request Taken", 
+              "Your request has been taken!\nCheck your open requests for more information"
+            );
+          } else if (data.status === "waitingForApproval") {
+            console.log("Detected 'waitingForApproval' status change.");
+            sendNotification(
+              "Your request has been finished!", 
+              "Approve the request to get your coins"
+            );
+          } else if (data.status === "finished") {
+            console.log("Detected 'finished' status change.");
+            sendNotification(
+              "Thank you for using our app!", 
+              "Your request has been approved and your coins have been added to your balance"
+            );
+          }
+        }
+      });
+    });
+  
+    return () => unsubscribe();
   }, [uid]);
 
 
@@ -96,12 +144,55 @@ const MainPage = () => {
   useEffect(() => {
     const q = query(collection(DatabaseManager.getDB(), "Open-Requests"), where("uid", "!=", uid));
     const unsubscribe = onSnapshot(q, (querySnapshot) => {
-      setRequests(Reader.refrenceToDocument(querySnapshot.docs, uid));
+      setRequests(Reader.refrenceToDocument(querySnapshot.docs));
   });
-  
+
    // Cleanup the listener on unmount
    return () => unsubscribe();
   }, [uid]);
+
+
+  useEffect(() => {
+    const takenByUsers = myRequests.map(request => request.takenBy).filter(Boolean);
+    if (takenByUsers.length === 0) return;
+  
+    const q = query(
+      collection(DatabaseManager.getDB(), "users"),
+      where("uid", "in", takenByUsers)
+    );
+  
+    const unsubscribe = onSnapshot(q, (querySnapshot) => {
+      (async () => {
+        const requestInfoList = await Promise.all(
+          myRequests.map(async (request) => {
+            // Await the image so it's not a Promise.
+            const image = await fetchProfileImage(request.takenBy);
+            return {
+              id: request.id,
+              title: request.title || "",
+              currentCoordinates: request.currentCoordinates || "",
+              currentAddress: request.currentAddress || "",
+              DestinationLoaction: request.DestinationLoaction || "",
+              additionalNotes: request.additionalNotes || "",
+              phoneNumber: request.phoneNumber || "",
+              timestamp: request.timestamp || "",
+              uid: request.uid || "",
+              createdAt: request.createdAt || "",
+              updatedAt: request.updatedAt || "",
+              status: request.status,
+              takenBy: request.takenBy || null,
+              takenByImage: image || "",
+            };
+          })
+        );
+        setActiveRequestInfo(requestInfoList);
+      })();
+    });
+  
+    return () => unsubscribe();
+  }, [myRequests, uid]);
+
+
 
   // ✅ Listen for authentication state changes
   useEffect(() => {
@@ -146,32 +237,101 @@ const MainPage = () => {
 
   // Fetch profile image when UID becomes available
   useEffect(() => {
-    if (uid) {
-      fetchProfileImage(uid);
-    }
-  }, [uid]);
-
-
-
-  // ✅ Step 2: Function to fetch profile image
-  const fetchProfileImage = async (uid: string) => {
-    try {
-      console.log(`🔍 Fetching profile image for UID: ${uid}`);
-      
-      const userDoc = await ReaderInstance.getTableEntranceByKey("users", uid);
-      const userDocRef = await getDoc(userDoc);
-      
-      if (userDocRef.exists()) {
-        const userData = userDocRef.data();
-        const base64Data = userData?.picture || null;
-        setProfileImage(base64Data);
-      } else {
-        console.warn(`⚠️ No profile image found for user ${uid}`);
+      if (uid) {
+        const fetchImage = async () => {
+          let image = await fetchProfileImage(uid);
+          if (image) {
+            setProfileImage(image);
+          }
+        };
+        fetchImage();
       }
-    } catch (error) {
-      console.error("❌ Error fetching profile image:", error);
+    }, [uid]);
+
+
+    useEffect(() => {
+      fetchRequestImage();
+    }, []);
+
+
+    useEffect(() => {
+      fetchMyLoactionImage();
+    }, []);
+
+
+// ✅ Step 2: Function to fetch profile image
+const fetchProfileImage = async (uid: string) => {
+  try {
+    console.log(`🔍 Fetching profile image for UID: ${uid}`);
+    
+    const userDocRef = await ReaderInstance.findUserByInternalId(uid);
+    if (!userDocRef) {
+      console.warn(`⚠️ No document found for user ${uid}`);
+      return;
     }
-  };
+    
+    const userDocSnap = await getDoc(userDocRef);
+    if (userDocSnap.exists()) {
+      const userData = userDocSnap.data();
+      // Read the correct field (assumed to be 'profileImage' here)
+      
+      const base64Data = userData?.ProfileImage || null;
+      return base64Data;
+    } else {
+      console.warn(`⚠️ No profile image found for user ${uid}`);
+    }
+  } catch (error) {
+    console.error("❌ Error fetching profile image:", error);
+  }
+};
+
+
+const fetchRequestImage = async () => {
+  try {
+    // Reference the document in the Resources collection with id "RequestImage"
+    const imageDocRef = doc(DatabaseManager.getDB(), "Resources", "RequestImage");
+    const docSnap = await getDoc(imageDocRef);
+    
+    if (docSnap.exists()) {
+      const data = docSnap.data();
+      // Assuming the base64 image is stored in the "photo" field
+      const base64Image = data.Photo;
+      
+
+      setRequestImage(base64Image);
+
+    } else {
+      console.warn("No RequestImage document found in Resources.");
+    }
+  } catch (error) {
+    console.error("Error fetching request image:", error);
+  }
+};
+
+
+const fetchMyLoactionImage = async () => {
+  try {
+    // Reference the document in the Resources collection with id "RequestImage"
+    const imageDocRef = doc(DatabaseManager.getDB(), "Resources", "myLocationImage");
+    const docSnap = await getDoc(imageDocRef);
+    
+    if (docSnap.exists()) {
+      const data = docSnap.data();
+      // Assuming the base64 image is stored in the "photo" field
+      const base64Image = data.Photo;
+      
+
+      setMylocationImage(base64Image);
+
+    } else {
+      console.warn("No RequestImage document found in Resources.");
+    }
+  } catch (error) {
+    console.error("Error fetching request image:", error);
+  }
+};
+
+
 
   const pickImage = async () => {
     try {
@@ -186,7 +346,7 @@ const MainPage = () => {
       if (!result.canceled) {
         const base64String = result.assets[0].base64;
         if (base64String) {
-          await uploadImageToFirestore(base64String);
+          await (base64String);
         }
       } else {
         console.log('Image picker canceled.');
@@ -196,22 +356,6 @@ const MainPage = () => {
     }
   };
 
-  const uploadImageToFirestore = async (base64Data: string) => {
-    if (!user) {
-      Alert.alert('Error', 'No user is logged in.');
-      return;
-    }
-
-    try {
-      const userDoc = await ReaderInstance.getTableEntranceByKey("users", user.uid);
-      await setDoc(userDoc, { picture: base64Data }, { merge: true });
-      setProfileImage(base64Data);
-      Alert.alert('Success', 'Profile image uploaded to Firestore!');
-    } catch (error) {
-      console.error('Error uploading image:', error);
-      Alert.alert('Error', 'Failed to upload image.');
-    }
-  };
 
   const handleLogout = () => {
     auth.signOut().then(() => {
@@ -221,9 +365,7 @@ const MainPage = () => {
     });
   };
 
-
-
-    // ✅ טעינת הבקשות והצגתן על המפה
+    // ✅ Load requests and render them on screen
     useEffect(() => {
       const fetchRequests = async () => {
         try {
@@ -236,14 +378,14 @@ const MainPage = () => {
       fetchRequests();
     }, []);
   
-    // ✅ בקשת הרשאה וקבלת מיקום GPS
+    // ✅ Request location permission and get user's location
     useEffect(() => {
       (async () => {
         const { status } = await Location.requestForegroundPermissionsAsync();
         if (status !== "granted") {
           console.log("❌ Permission to access location was denied");
           Alert.alert("Error", "We couldn't get your location. Loading default view.");
-          // נציב מיקום ברירת מחדל ונמשיך
+          // set default location (Jereuslaem)
           setUserLocation([31.5, 34.75]); 
           setLocationLoaded(true);
           return;
@@ -289,6 +431,9 @@ const MainPage = () => {
         // );
     }
   };
+
+  const balance = userCoins !== null ? `💰Balance: ${userCoins}` : "💰Balance: Loading...";
+
   const handleOptionSelect = (option: string) => {
     const trimmedOption = option.trim();
     console.log("Selected option:", JSON.stringify(trimmedOption));
@@ -296,8 +441,8 @@ const MainPage = () => {
       case "👤Profile":
         navigation.navigate("ProfilePage");
         break;
-      case "💰Balance":
-
+      case balance:
+        navigation.navigate("BuyCoinsPage");
         break;
       case "⚙️Settings":
 
@@ -310,31 +455,49 @@ const MainPage = () => {
     }
   };
 
-  // ✅ אייקון למיקום המשתמש
-  const userIcon: Icon = new Icon({
-    iconUrl: "/app/View/Images/RequestIcon.jpg", // הנתיב המלא מהשורש
-    iconSize: [60, 60],
-    iconAnchor: [30, 60],
-    popupAnchor: [0, -60],
-  });
-  
 
-// ✅ אייקון ברירת מחדל לבקשות
+// Default icon defined elsewhere:
 const requestDefaultIcon = new Icon({
-  iconUrl: "/request-default.png", // תמונה שתשים ב-public/
+  iconUrl: "/Images/RequestIcon.jpg",
   iconSize: [50, 50],
   iconAnchor: [25, 50],
   popupAnchor: [0, -50],
 });
 
+// In your component:
+const customRequestIcon = useMemo(() => {
+  if (requestImage) {
+    return new Icon({
+      iconUrl: requestImage,
+      iconSize: [50, 50],
+      iconAnchor: [25, 50],
+      popupAnchor: [0, -50],
+    });
+  }
+  return requestDefaultIcon;
+}, [requestImage]);
+
+
+// In your component:
+const customMyLocationtIcon = useMemo(() => {
+  if (myLocationImage) {
+    return new Icon({
+      iconUrl: myLocationImage,
+      iconSize: [50, 50],
+      iconAnchor: [25, 50],
+      popupAnchor: [0, -50],
+    });
+  }
+  return requestDefaultIcon;
+}, [myLocationImage]);
 
 
 
 
-  const balance = userCoins !== null ? `💰Balance: ${userCoins}` : "💰Balance: Loading...";
+
+  
 
   const headers = ["👤Profile", balance, "⚙️Settings", "❌Log Out"];  // the menu headers
-
 
   const center: LatLngExpression = [userLocation?.[0] ?? 31.5, userLocation?.[1] ?? 34.75];
   return (
@@ -366,7 +529,7 @@ const requestDefaultIcon = new Icon({
                   {userLocation && (
                     <Marker 
                       position={userLocation as [number, number]} 
-                      {...{ icon: userIcon }}
+                      {...{ icon: customMyLocationtIcon }}
                     >
                       <Popup>📍 You are here</Popup>
                     </Marker>
@@ -386,7 +549,7 @@ const requestDefaultIcon = new Icon({
                       <Marker
                         key={req.id}
                         position={[coordsArr[0], coordsArr[1]] as [number, number]}
-                        {...{ icon: requestDefaultIcon }}
+                        {...{ icon: customRequestIcon }}
                       >
                         <Popup>
                           <Text style={{ fontWeight: 'bold' }}>{req.title}</Text>
@@ -432,6 +595,10 @@ const requestDefaultIcon = new Icon({
             </TouchableOpacity>
           ))}
         </View>
+        <View style={styles.widgetContainer}>
+          <FloatingActionButton requests={activeRequestsInfo}/>
+        </View>
+
       </SafeAreaView>
     </PaperProvider>
   );

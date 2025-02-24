@@ -9,12 +9,17 @@ import {
   Modal,
   Button,
   ScrollView,
+  GestureResponderEvent,
+  Linking,
+  Dimensions,
 } from "react-native";
 import { Reader } from "../ViewModel/Reader";
 import { Writer } from "../ViewModel/Writer";
 
 import { useRef } from 'react';
 import { Animated} from 'react-native';
+import { sendNotification } from "./NotificationService";
+import { DatabaseManager } from "../Model/databaseManager";
 
 interface Request {
   id: string;
@@ -25,8 +30,8 @@ interface Request {
   additionalNotes: string;
   phoneNumber: string;
   DestinationLoaction: string;
-  caught: boolean; // Added caught field
-  takenBy?: string; // Added takenBy field
+  status: string; 
+  takenBy?: string; 
 }
 
 const MyFavorsTab: React.FC = () => {
@@ -39,6 +44,8 @@ const MyFavorsTab: React.FC = () => {
   const [expanded, setExpanded] = useState(false);
   const [selectedHeader, setSelectedHeader] = useState('הזמנות שלקחתי');
   const animation = useRef(new Animated.Value(0)).current;
+
+  
 
   // Added for tabledropdown
   const toggleDropdown = () => {
@@ -54,44 +61,105 @@ const MyFavorsTab: React.FC = () => {
       setSelectedHeader(option);
       toggleDropdown();
   };
+  const EndOngoing = async (requestId: string) => {
+    try {
+      await Writer.changeReqeustStatus(requestId, "awaitingForApproval");
+      // עדכון state או רענון הנתונים במידת הצורך
+      console.log(`סטטוס הבקשה ${requestId} שונה ל-awaitingForApproval`);
+    } catch (error) {
+      console.error("שגיאה בעדכון הסטטוס:", error);
+    }
+  };
+  
+  const finishApproval = async (requestId: string) => {
+    try {
+      // change the status of the request to finished
+      await Writer.changeReqeustStatus(requestId, "finished");
+      // if accepted, send notification to the user
+       
+      let takenByUserID = await DatabaseManager.getRequestTaker(requestId);
 
+      // add one coin to the other user
+      takenByUserID? DatabaseManager.addCoinsToUser(takenByUserID, 1) : console.log("No user to give coins to");
+
+      console.log(`סטטוס הבקשה ${requestId} שונה ל-finished`);
+    } catch (error) {
+      console.error("שגיאה בעדכון הסטטוס:", error);
+    }
+  };
+  
+  const revertApproval = async (requestId: string) => {
+    try {
+      await Writer.changeReqeustStatus(requestId, "ongoing");
+      // עדכון state או רענון הנתונים במידת הצורך
+      console.log(`סטטוס הבקשה ${requestId} שונה ל-ongoing`);
+    } catch (error) {
+      console.error("שגיאה בעדכון הסטטוס:", error);
+    }
+  };
+  
+  const openWhatsApp = (phoneNumber: string) => {
+    // קישור לפתיחת שיחה בוואצאפ עם המספר
+    const url = `https://wa.me/${phoneNumber}`;
+    Linking.openURL(url).catch(err => console.error("שגיאה בפתיחת WhatsApp:", err));
+  };
+  
   const renderRow = ({ item }: { item: Request }) => (
     <View style={styles.row}>
-      {/* Title */}
+      {/* במצב "ongoing" – כפתור אחד */}
+      
+      { item.status === "ongoing" && (
+        <View style={[styles.cellWrapper, styles.finishButtonWrapper]}>
+          <TouchableOpacity onPress={() => EndOngoing(item.id)} style={styles.finishButton}>
+            <Text style={styles.finishButtonText}>✔</Text>
+          </TouchableOpacity>
+        </View>
+      )}
+  
+      {/* במצב "awaitingForApproval" – שני כפתורים וגם קישור לוואצאפ */}
+      {item.status === "awaitingForApproval" && (
+        <View style={[styles.cellWrapper, styles.approvalButtonsWrapper]}>
+          {/* כפתור ✔ – לעדכון ל־finished */}
+          <TouchableOpacity onPress={() => finishApproval(item.id)} style={styles.finishButton}>
+            <Text style={styles.finishButtonText}>✔</Text>
+          </TouchableOpacity>
+          {/* כפתור ✘ – לעדכון ל־ongoing */}
+          <TouchableOpacity onPress={() => revertApproval(item.id)} style={styles.cancelButton}>
+            <Text style={styles.cancelButtonText}>✘</Text>
+          </TouchableOpacity>
+          {/* כפתור לפתיחת WhatsApp עם המספר מהבקשה */}
+          <TouchableOpacity onPress={() => openWhatsApp(item.phoneNumber)} style={styles.whatsAppButton}>
+            <Text style={styles.whatsAppButtonText}>WhatsApp</Text>
+          </TouchableOpacity>
+        </View>
+      )}
+  
+      {/* שאר התאים */}
       <View style={[styles.cellWrapper, styles.titleCell]}>
         <Text style={styles.cellText}>{item.title}</Text>
       </View>
   
-      {/* Phone Number */}
       <View style={[styles.cellWrapper, styles.phoneCell]}>
         <Text style={styles.cellText}>{item.phoneNumber}</Text>
       </View>
   
-      {/* Current Address */}
       <View style={styles.cellWrapper}>
         <Text style={styles.cellText}>{item.currentAddress}</Text>
       </View>
   
-      {/* Destination Location */}
       <View style={styles.cellWrapper}>
         <Text style={styles.cellText}>{item.DestinationLoaction}</Text>
       </View>
   
-      {/* Additional Notes */}
       <View style={[styles.cellWrapper, styles.notesCell]}>
         <Text style={styles.cellText}>{item.additionalNotes}</Text>
       </View>
-
-      <View style={[styles.cellWrapper, styles.statusCell]}>
-        <Text style={styles.cellText}>{item.caught ? "✔" : "⏳"}</Text>
-      </View>
   
-      {/* (Optional) Button - Uncomment if needed */}
-      {/* <View style={styles.cellWrapper}>
-        <TouchableOpacity style={styles.removeButton} onPress={() => handleAction(item.id)}>
-          <Text style={styles.removeButtonText}>✘</Text>
-        </TouchableOpacity>
-      </View> */}
+      <View style={[styles.cellWrapper, styles.statusCell]}>
+        <Text style={styles.cellText}>
+          {item.status === "finished" ? "✔" : "⏳"}
+        </Text>
+      </View>
     </View>
   );
 
@@ -122,6 +190,16 @@ const MyFavorsTab: React.FC = () => {
     fetchRequests(selectedHeader)
   }, [selectedHeader]);
 
+
+  //
+  function handleAcceptRequest(id: any): void {
+    throw new Error("Function not implemented.");
+  }
+
+  function cancelrequest(id: any): void {
+    throw new Error("Function not implemented.");
+  }
+
   return (
     <View style={styles.container}>
         <TouchableOpacity onPress={toggleDropdown} style={styles.header}>
@@ -133,6 +211,7 @@ const MyFavorsTab: React.FC = () => {
         }) }]}> 
             {expanded && (
                 <>
+            
                     <TouchableOpacity onPress={() => selectHeader('הזמנות שלקחתי')} style={styles.option}>
                         <Text>הזמנות שלקחתי</Text>
                     </TouchableOpacity>
@@ -161,6 +240,7 @@ const FavorsTab: React.FC = () => {
   const [modalVisible, setModalVisible] = useState(false);
   const [selectedRequestId, setSelectedRequestId] = useState<string>("");
   const reader = new Reader();
+  
 
   useEffect(() => {
     // Fetch requests when the tab is loaded
@@ -181,7 +261,12 @@ const FavorsTab: React.FC = () => {
     setModalVisible(true);
   };
 
-  // sets the caught field to true and opens a WhatsApp chat window
+
+
+  
+
+
+  // This function handels the process of taking a package by other user
   const confirmAction = async (): Promise<void> => {
     try {
       const selectedRequest = requests.find(
@@ -195,8 +280,10 @@ const FavorsTab: React.FC = () => {
       }
   
 
-    // Update the caught field in the database
-    await Writer.setRequestCaught(selectedRequestId, true);
+    // Update the status field in the database
+    await Writer.changeReqeustStatus(selectedRequestId, "ongoing");
+
+
 
     let phoneNumber = selectedRequest.phoneNumber;
 
@@ -257,22 +344,22 @@ const FavorsTab: React.FC = () => {
       <Text style={styles.sectionTitle}>הזמנות בסביבה</Text>
         <View style={[styles.row, styles.header]}>
           <View style={styles.cellWrapper}>
-            <Text style={styles.headerText}>Title</Text>
+            <Text style={styles.headerText}>כותרת הזמנה</Text>
           </View>
           <View style={styles.cellWrapper}>
-            <Text style={styles.headerText}>Phone Number</Text>
+            <Text style={styles.headerText}>מספר טלפון של המזמין</Text>
           </View>
           <View style={styles.cellWrapper}>
-            <Text style={styles.headerText}>Start Address</Text>
+            <Text style={styles.headerText}>כתובת התחלה</Text>
           </View>
           <View style={styles.cellWrapper}>
-            <Text style={styles.headerText}>Destination Address</Text>
+            <Text style={styles.headerText}>כתובת יעד</Text>
           </View>
           <View style={styles.cellWrapper}>
-            <Text style={styles.headerText}>Additional Notes</Text>
+            <Text style={styles.headerText}>מידע נוסף</Text>
           </View>
           <View style={styles.cellWrapper}>
-            <Text style={styles.headerText}>Select Favor</Text>
+            <Text style={styles.headerText}>לחץ כדי לעזור!</Text>
           </View>
         </View>
 
@@ -282,7 +369,7 @@ const FavorsTab: React.FC = () => {
           renderItem={renderRow}
           keyExtractor={(item) => item.id}
           style={{ maxHeight: 600 }}
-          contentContainerStyle={{ paddingBottom: 10 }}
+          contentContainerStyle={{ paddingBottom: 20 }}
         />
       </View>
 
@@ -317,25 +404,84 @@ const FavorsTab: React.FC = () => {
   );
 };
 
+const { width: screenWidth } = Dimensions.get('window');
+
+
+
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    padding: 15,
-    backgroundColor: "#f4f6f9", // Softer background color for a clean look
+    padding: 0,
+    backgroundColor: "#f4f6f9", // רקע רך
+  },
+  // מעטפת כפתורי האישור/ביטול
+  approvalButtonsWrapper: {
+    flexDirection: 'row',
+    // אפשר להחליף ל־'space-evenly' או 'space-between' בהתאם להעדפה
+    justifyContent: 'space-around',
+    alignItems: 'center',
+    marginVertical: 10, // רווח אנכי בין הכפתורים לרכיבים אחרים
+  },
+
+  // כפתור ביטול (✘)
+  cancelButton: {
+    backgroundColor: '#d9534f',
+    paddingVertical: 6,
+    paddingHorizontal: 12,
+    borderRadius: 4,
+    marginHorizontal: 5, // רווח בין כפתורים
+  },
+  cancelButtonText: {
+    color: 'white',
+    fontWeight: 'bold',
+    fontSize: 16,
+  },
+
+  // כפתור WhatsApp
+  whatsAppButton: {
+    backgroundColor: '#25D366',
+    paddingHorizontal: 15,
+    paddingVertical: 8,
+    borderRadius: 4,
+    marginHorizontal: 5, // רווח בין כפתורים
+  },
+  whatsAppButtonText: {
+    color: 'white',
+    fontWeight: 'bold',
+    fontSize: 14,
+  },
+
+  // finish button
+  finishButtonWrapper: {
+    // 
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  finishButton: {
+    backgroundColor: 'green',
+    paddingHorizontal: 15,
+    paddingVertical: 8,
+    borderRadius: 4,
+    marginHorizontal: 5, // margin between buttons
+  },
+  finishButtonText: {
+    color: 'white',
+    fontWeight: 'bold',
+    fontSize: 16,
   },
 
   // Header styles
   header: {
-    backgroundColor: "#3b5998", // Deep blue for a modern header
+    backgroundColor: "#3b5998", // Header color
     borderBottomWidth: 2,
     borderBottomColor: "#ccc",
-    paddingVertical: 12,
-    borderRadius: 8,
+    paddingVertical: 2,
+    borderRadius: 2,
   },
   headerText: {
     fontWeight: "bold",
     textAlign: "center",
-    fontSize: 16,
+    fontSize: 11,
     color: "white",
   },
 
@@ -351,14 +497,14 @@ const styles = StyleSheet.create({
     fontWeight: "bold",
     textAlign: "center",
     color: "#3b5998",
-    marginVertical: 15, // Adds spacing before and after title
+    marginVertical: 15,
     backgroundColor: "#f9f9f9",
     paddingVertical: 8,
     borderRadius: 5,
   },
 
   notesCell: {
-    maxWidth: 120, // Prevents text from stretching too wide
+    maxWidth: 120,
     textAlign: "center",
     backgroundColor: "#f9f9f9",
     paddingVertical: 8,
@@ -376,7 +522,7 @@ const styles = StyleSheet.create({
     borderRadius: 5,
   },
 
-  // Table row
+  // 
   row: {
     flexDirection: "row",
     borderBottomWidth: 1,
@@ -385,27 +531,27 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
     backgroundColor: "#ffffff",
     borderRadius: 8,
-    marginBottom: 6, // Adds spacing between rows
+    marginBottom: 6,
     shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
+    shadowOffset: { width: 3, height: 2 },
     shadowOpacity: 0.1,
     shadowRadius: 4,
-    elevation: 3, // Android shadow
+    elevation: 3, // for android
   },
 
-  // Table cells
+  // 
   cellWrapper: {
     flex: 1,
     justifyContent: "center",
     alignItems: "center",
-    paddingVertical: 10,
-    paddingHorizontal: 8,
+    paddingVertical: 0.02,
+    paddingHorizontal: 0.02
   },
   cellText: {
-    fontSize: 14,
+    fontSize: 10,
     textAlign: "center",
     flexWrap: "wrap",
-    color: "#333", // Slightly darker for contrast
+    color: "#333",
   },
 
   // Modal styles
@@ -413,7 +559,7 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: "center",
     alignItems: "center",
-    backgroundColor: "rgba(0, 0, 0, 0.5)", // Dimmed background
+    backgroundColor: "rgba(0, 0, 0, 0.5)",
   },
   modalContent: {
     backgroundColor: "#fff",
@@ -430,7 +576,7 @@ const styles = StyleSheet.create({
     fontSize: 18,
     marginBottom: 20,
     textAlign: "center",
-    color: "#2C3E50", // Modern deep blue-gray
+    color: "#2C3E50",
     fontWeight: "600",
   },
   buttonContainer: {
@@ -448,9 +594,43 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1, 
     borderBottomColor: '#ccc' 
   },
+  myRequestsContainer: {
+    padding: 16,
+    backgroundColor: '#fff',
+    marginVertical: 10,
+    borderRadius: 8,
+    width: screenWidth * 0.9, // 90% of the screen width
+    maxWidth: 50,
+    alignSelf: 'center',
+  },
+  myRequestsHeader: {
+    fontSize: 20,
+    fontWeight: 'bold',
+    marginBottom: 10,
+    textAlign: 'center',
+  },
+  requestItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginVertical: 8,
+    justifyContent: 'space-between',
+  },
+  requestTitle: {
+    fontSize: 16,
+    flex: 1,
+  },
+  acceptButton: {
+    backgroundColor: '#5cb85c',
+    paddingVertical: 6,
+    paddingHorizontal: 12,
+    borderRadius: 4,
+    marginLeft: 10,
+  },
+  buttonText: {
+    color: '#fff',
+    fontSize: 14,
+  },
 });
 
 export default FavorsTab;
 export { MyFavorsTab };
-
-

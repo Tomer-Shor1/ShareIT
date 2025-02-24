@@ -148,47 +148,11 @@ export class Reader {
       const currentUserId = auth.currentUser?.uid || "";
       
       // Query the "Open-Requests" collection
-      const querySnapshot = await DatabaseManager.queryCollection('Open-Requests', null, null, null);
+      const querySnapshot = await DatabaseManager.queryCollection("Open-Requests", "uid", "!=", currentUserId);
       console.log("Query executed successfully");
       
-      let requests = Reader.refrenceToDocument(querySnapshot, currentUserId);
-  
-    //   for (const doc of querySnapshot) {
-    //     if (doc && doc.id) {
-    //       const data = doc.data ? doc.data() : doc; // Retrieve data from the document
-  
-    //       // Filter: if the request has a "takenBy" field equal to the current user's UID, skip it.
-    //       if (data.uid && data.uid === currentUserId) {
-    //         console.log(`Skipping request ${doc.id} because it was opened by the current user!`);
-    //         continue;
-    //       }
-  
-    //       const request = { 
-    //         id: doc.id,                                           // Document ID
-    //         title: data.title || "",                              // "title" field
-    //         currentCoordinates: data.currentCoordinates || "",    // "currentCoordinates"
-    //         currentAddress: data.currentAddress || "",            // "currentAddress"
-    //         DestinationLoaction: data.DestinationLoaction || "",  // "destinationCoordinates"
-    //         additionalNotes: data.additionalNotes || "",          // "additionalNotes"
-    //         phoneNumber: data.phoneNumber || "",                  // "phoneNumber"
-    //         timestamp: data.timestamp || "",                      // "timestamp"
-    //         uid: data.uid || "",                                  // "uid"
-    //         createdAt: data.createdAt || "",                      // "createdAt"
-    //         updatedAt: data.updatedAt || "",                      // "updatedAt"
-    //         caught: data.caught || false,                         // "caught" boolean
-    //       };
-  
-    //       // Add the filtered request to the array.
-    //       requests.push(request);
-    //     } else {
-    //       console.log(`Skipping request with ID: ${doc.id} - Data not available.`);
-    //     }
-    //   }
-      
-    //   console.log("Successfully retrieved Open-Requests:", requests);
-    //   return requests;
-    // } 
-    return requests;
+      let requests = Reader.refrenceToDocument(querySnapshot);
+      return requests;
     }catch (error) {
       console.error("Error reading open requests:", error);
       throw new Error("Failed to read open requests");
@@ -198,7 +162,7 @@ export class Reader {
   // this function returns the requests that were opened by the user
   // the function receives the querySnapshot and the user's UID and returns an array of requests
   // 
-  static refrenceToDocument(querySnapshot: any, UserId: string){
+  static refrenceToDocument(querySnapshot: any){
     let requests: any[] = [];
 
     for (const doc of querySnapshot) {
@@ -206,10 +170,10 @@ export class Reader {
         const data = doc.data ? doc.data() : doc; // Retrieve data from the document
 
         // Filter: if the request has a "takenBy" field equal to the current user's UID, skip it.
-        if (data.uid && data.uid === UserId) {
-          console.log(`Skipping request ${doc.id} because it was opened by the current user!`);
-          continue;
-        }
+        // if (data.uid && data.uid === UserId) {
+        //   console.log(`Skipping request ${doc.id} because it was opened by the current user!`);
+        //   continue;
+        // }
 
         const request = { 
           id: doc.id,                                           // Document ID
@@ -223,7 +187,8 @@ export class Reader {
           uid: data.uid || "",                                  // "uid"
           createdAt: data.createdAt || "",                      // "createdAt"
           updatedAt: data.updatedAt || "",                      // "updatedAt"
-          caught: data.caught || false,                         // "caught" boolean
+          status: data.status || "",                            // "status field"
+          takenBy: data.takenBy || null,                        // uid of whoever took it
         };
 
         // Add the filtered request to the array.
@@ -246,6 +211,34 @@ export class Reader {
   async ReadRequestsOpenedByUser(uid: string): Promise<any[]> {
     return DatabaseManager.getRequestsOpenedByUser(uid);
   }
+
+   async findUserByInternalId(userId: string) {
+    try {
+      // Reference the "users" collection
+      const db = DatabaseManager.getDB();
+      const usersRef = collection(db, 'users');
+      
+      // Create a query to find documents where the "userID" field == userId
+      const q = query(usersRef, where('uid', '==', userId));
+  
+      // Execute the query
+      const querySnapshot = await getDocs(q);
+      console.log("---------------------------");
+      console.log(querySnapshot);
+      // If a matching document is found, return its ref
+      if (!querySnapshot.empty) {
+        console.log('User found:', querySnapshot.docs[0].data);
+        return querySnapshot.docs[0].ref;
+      }
+  
+      // Otherwise, return null if no matching document is found
+      return null;
+    } catch (error) {
+      console.error('Error finding user by internal ID:', error);
+      return null;
+    }
+  }
+
 
 
    async getRequestById(requestId: string) {

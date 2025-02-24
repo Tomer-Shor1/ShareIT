@@ -31,6 +31,7 @@ const CreateRequestScreen = ({ navigation }: { navigation: NavigationProp<any> }
   const [loading, setLoading] = useState(false);
   const [currentAutocomplete, setCurrentAutocomplete] = useState<google.maps.places.Autocomplete | null>(null);
   const [destinationAutocomplete, setDestinationAutocomplete] = useState<google.maps.places.Autocomplete | null>(null);
+  const [errorMessage, setErrorMessage] = useState<string>("");
   const googleLibraries: Libraries = ['places'];
   const writer = new Writer(); // ֿWriter
   const fetchCurrentLocation = async () => {
@@ -95,66 +96,104 @@ async function getUser(): Promise<string | null> {
   });
 }
 
-  const handleSubmit = async () => {
-    try {
-      const user = await Reader.getCurrentUser();
-      if (!user) {
-        Alert.alert("Error", "You must be logged in to create a request.");
-        return;
-      }
+// validates requests form
+// ensures that all fields are filled, aswell as phone number completness
+// ensures that the adress is given with coordinates - so it will render on the map
+const validateRequest = (): string => {
+  // Check required fields
+  if (!title || !currentAddress || !DestinationLoaction || !phoneNumberm) {
+    return "Please fill in all required fields";
+  }
 
-      const userId =  user.uid;
-  
-      const userCoins = await DatabaseManager.getUserCoins(userId);
-      if (userCoins === null || userCoins < 1) {
-        Alert.alert("Not enough coins", "You need at least 1 coin to create a request.");
-        return;
-      }
-      
-      console.log("Adding request!!!!!");
-      // ✅ Proceed with adding the request
-      const response = await writer.addRequest(
-        title,
-        currentCoordinates ? `${currentCoordinates.latitude},${currentCoordinates.longitude}` : '',
-        currentAddress,
-        DestinationLoaction,
-        additionalNotes,
-        phoneNumberm,
-        takenBy
-      );
-  
-      if (response.success) {
+  // Validate phone number: exactly 10 digits
+  const phoneRegex = /^\d{10}$/;
+  if (!phoneRegex.test(phoneNumberm)) {
+    return "Phone number must contain exactly 10 digits.";
+  }
 
-        // set deduct amount
-        let deductAmount = -1;
-        let isUserSubscribed = await DatabaseManager.isUserSubscribed(userId);
+  // Check location was selected from the API
+  // Assuming currentCoordinates is only set when a suggestion is chosen.
+  if (!currentCoordinates) {
+    return "Please select a location from the suggestions.";
+  }
 
-        if (isUserSubscribed) { // if user is subscribed, deduct half of the original price
-          await DatabaseManager.addCoinsToUser(userId, deductAmount * 0.5); 
-        }
-        else{   // if user is not subscribed, deduct the original price
-          await DatabaseManager.addCoinsToUser(userId, deductAmount); 
-        }
-        Alert.alert("Success", "Request added successfully");
-        console.log("Request added successfully");
-  
-        // Reset form fields
-        setTitle("");
-        setCurrentAddress("");
-        setPhoneNumber("");
-        setDestinationLoaction("");
-        setAdditionalNotes("");
-        setTakenBy("");
-        
-      } else {
-        Alert.alert("Error", response.message);
-      }
-    } catch (error) {
-      Alert.alert("Error", "Failed to add request");
-      console.error(error);
+  return ""; // No errors
+};
+
+const handleSubmit = async () => {
+
+  setErrorMessage("");
+
+  // validate inputs
+  const validationError = validateRequest();
+  if (validationError) {
+    setErrorMessage(validationError);
+    return;
+  }
+
+  try {
+    const user = await Reader.getCurrentUser();
+    if (!user) {
+      setErrorMessage("You must be logged in to create a request.");
+      console.log("You must be logged in to create a request.");
+      return;
     }
-    navigation.navigate('Main');
-  };
+
+  
+
+    const userId =  user.uid;
+
+    const userCoins = await DatabaseManager.getUserCoins(userId);
+    if (userCoins === null || userCoins < 1) {
+      setErrorMessage("You must be logged in to create a request.");
+      console.log("You must be logged in to create a request.");
+      return;
+    }
+    
+    console.log("Adding request!!!!!");
+    // ✅ Proceed with adding the request
+    const response = await writer.addRequest(
+      title,
+      currentCoordinates ? `${currentCoordinates.latitude},${currentCoordinates.longitude}` : '',
+      currentAddress,
+      DestinationLoaction,
+      additionalNotes,
+      phoneNumberm,
+      takenBy
+    );
+
+    if (response.success) {
+
+      // set deduct amount
+      let deductAmount = -1;
+      let isUserSubscribed = await DatabaseManager.isUserSubscribed(userId);
+
+      if (isUserSubscribed) { // if user is subscribed, deduct half of the original price
+        await DatabaseManager.addCoinsToUser(userId, deductAmount * 0.5); 
+      }
+      else{   // if user is not subscribed, deduct the original price
+        await DatabaseManager.addCoinsToUser(userId, deductAmount); 
+      }
+      Alert.alert("Success", "Request added successfully");
+      console.log("Request added successfully");
+
+      // Reset form fields
+      setTitle("");
+      setCurrentAddress("");
+      setPhoneNumber("");
+      setDestinationLoaction("");
+      setAdditionalNotes("");
+      setTakenBy("");
+      
+    } else {
+      Alert.alert("Error", response.message);
+    }
+  } catch (error) {
+    Alert.alert("Error", "Failed to add request");
+    console.error(error);
+  }
+  navigation.navigate('Main');
+};
 
   return (
     <SafeAreaView style={styles.container}>
@@ -248,6 +287,11 @@ async function getUser(): Promise<string | null> {
           <TouchableOpacity style={styles.cancelButton} onPress={() => navigation.navigate('Main')}>
             <Text style={styles.cancelButtonText}>Cancel</Text>
           </TouchableOpacity>
+
+          {errorMessage ? (
+              <Text style={styles.errorText}>{errorMessage}</Text>
+            ) : null}
+
           <TouchableOpacity style={styles.submitButton} onPress={handleSubmit}>
             <Text style={styles.submitButtonText}>Submit Favor</Text>
           </TouchableOpacity>
@@ -335,6 +379,12 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: '#FFF',
     fontWeight: '600',
+  },
+  errorText: {
+    color: 'red',
+    fontSize: 16,
+    marginVertical: 10,
+    textAlign: 'center',
   },
   loaderContainer: {
     position: 'absolute',

@@ -1,4 +1,5 @@
 import firestore, { firebase, FirebaseFirestoreTypes, setDoc,  } from '@react-native-firebase/firestore';
+import { Linking } from 'react-native';
 import { getFirestore } from 'firebase/firestore';
 import { firebaseConfig } from './firebaseConfig';
 import { collection, addDoc } from 'firebase/firestore';
@@ -271,6 +272,35 @@ if (!auth.currentUser) {
     }
   }
 
+  
+/**
+ * Retrieves the "takenBy" field for a given request.
+ *
+ * @param requestId - The ID of the request document.
+ * @returns The UID of the user who took the request, or null if not found.
+ */
+   static async getRequestTaker(requestId: string){
+    try {
+      // Reference the specific request document in the "Open-Requests" collection
+      const requestDocRef = doc(DatabaseManager.getDB(), "Open-Requests", requestId);
+      const requestDocSnap = await getDoc(requestDocRef);
+  
+      if (requestDocSnap.exists()) {
+        const data = requestDocSnap.data();
+        // Return the 'takenBy' field if it exists and is non-empty
+        if (data && typeof data.takenBy === "string" && data.takenBy.trim() !== "") {
+          return data.takenBy;
+        }
+      } else {
+        console.warn(`No request found with id: ${requestId}`);
+      }
+      return null;
+    } catch (error) {
+      console.error("Error fetching request taker:", error);
+      return null;
+    }
+  }
+
 
     /**
    * Adds coins to a user's account.
@@ -345,13 +375,17 @@ if (!auth.currentUser) {
   }
 }
 
-static async  markRequestAsCaught(requestId: string, status: boolean): Promise<void> {
+static async ChangeRequestStatus(requestId: string, status: string): Promise<void> {
   try {
     // Fetch the request first
+    if (status !== "pending" && status !== "ongoing" && status !== "awaitingForApproval" && status !== "finished") {
+      console.error(`❌ Invalid status: ${status}`);
+      return;
+    }
     const request = await DatabaseManager.getRequestById(requestId);
 
     if (!request) {
-      console.error(`❌ Cannot mark request ${requestId} as caught: Not found.`);
+      console.error(`❌ Cannot mark request ${requestId} as ${status}: Not found.`);
       return;
     }
 
@@ -362,14 +396,14 @@ static async  markRequestAsCaught(requestId: string, status: boolean): Promise<v
       console.error("❌ User is not authenticated");
       return;
     }
-    // Reference the document and update the "caught" field
+    // Reference the document and update the "status" field
     const docRef = doc(this.db, "Open-Requests", requestId);
     await updateDoc(docRef, { 
-                      caught: status,
-                      takenBy: status ? userUID : null,
+                      status: status,
+                      takenBy: status !== "pending" ? userUID : null,
                     });
 
-    console.log(`✅ Request ${requestId} marked as caught.`);
+    console.log(`✅ Request ${requestId} marked as ${status}.`);
   } catch (error) {
     console.error(`❌ Error updating request ${requestId}:`, error);
   }

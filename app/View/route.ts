@@ -10,6 +10,7 @@ import ShowRequests from "./ShowRequests";
 import HomePage from "./HomePage";
 import SubscibePage from "./SubscribeScreen";
 import ProfilePage from "./ProfilePage";
+import BuyCoinsPage from "./BuyCoinsPage";
 
 //   import {HomePage as MainPage} from "../index";
 //   import AboutScreen from "./screens/AboutScreen";
@@ -23,6 +24,7 @@ export type RootStackParamList = {
   MainPage: undefined
   Subscribe: undefined
   ProfilePage: undefined
+  BuyCoinsPage: undefined
   // Add more routes here with their respective parameters
 };
 export const routes: RouteConfig[] = [
@@ -33,7 +35,8 @@ export const routes: RouteConfig[] = [
   { name: "ShowRequest", component: ShowRequests },
   { name: "Main", component: MainPage },
   { name: "Subscribe", component: SubscibePage },
-  { name: "ProfilePage", component: ProfilePage }
+  { name: "ProfilePage", component: ProfilePage },
+  { name: "BuyCoinsPage", component: BuyCoinsPage }
   // { name: "About", component: AboutScreen },
   // { name: "Contact", component: ContactScreen },
 ];

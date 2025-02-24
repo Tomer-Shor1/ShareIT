@@ -244,11 +244,12 @@ export class Writer {
 
 
   /**
- * Function to mark a request as caught.
+ * Function to change the status of a request.
  * @param requestId - The ID of the request to be updated.
+ * @param status - The new status of the request.
  */
-  static async setRequestCaught(requestId: string, flag: boolean): Promise<void> {
-    DatabaseManager.markRequestAsCaught(requestId, flag);
+  static async changeReqeustStatus(requestId: string, status: string): Promise<void> {
+    DatabaseManager.ChangeRequestStatus(requestId, status);
   }
 
 
@@ -319,7 +320,7 @@ export class Writer {
       additionalNotes,
       timestamp: new Date().toISOString(), // 
       uid: user.uid, // user's ID
-      caught: false // the request is not caught yet
+      status: "pending" // the request is not  
     };
 
     try {

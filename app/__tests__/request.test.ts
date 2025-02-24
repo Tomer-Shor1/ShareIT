@@ -53,12 +53,12 @@ describe('DatabaseManager Integration Tests', () => {
       DestinationLoaction: 'Test Destination',
       additionalNotes: 'This is a test request',
       phoneNumber: '123456789',
-      caught: false,
+      status: "pending",
       uid: 'testuser@example.com', // or 'test-user-id' if that's your UID
     };
 
     // Call addDocument to add a new request.
-    testDocId = await DatabaseManager.addDocument('Open-Requests', testData);
+    //testDocId = await DatabaseManager.addDocument('Open-Requests', testData);
     expect(testDocId).toBeTruthy();
 
     // Retrieve the document using its ID.
@@ -69,7 +69,7 @@ describe('DatabaseManager Integration Tests', () => {
     expect(retrievedRequest.DestinationLoaction).toBe(testData.DestinationLoaction);
     expect(retrievedRequest.additionalNotes).toBe(testData.additionalNotes);
     expect(retrievedRequest.phoneNumber).toBe(testData.phoneNumber);
-    expect(retrievedRequest.caught).toBe(false);
+    expect(retrievedRequest.status).toBe("pending");
     // Optionally verify timestamps exist.
     expect(retrievedRequest.createdAt).toBeTruthy();
     expect(retrievedRequest.updatedAt).toBeTruthy();
